@@ -103,7 +103,7 @@
                         setUser(snapshot.val());
                         setView('dashboard');
                     } else {
-                        setError('學號或密碼錯誤');
+                        setError('帳號或密碼錯誤');
                     }
                 } catch (err) {
                     setError('登入失敗');
@@ -153,7 +153,7 @@
 
                             <form onSubmit={(e) => { e.preventDefault(); onLogin(studentId, password); }} className="space-y-6">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">學生學號</label>
+                                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 ml-1">學生帳號</label>
                                     <input 
                                         type="text" 
                                         value={studentId}
