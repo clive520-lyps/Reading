@@ -193,6 +193,7 @@
             const [assignments, setAssignments] = useState([]);
             const [selectedArticle, setSelectedArticle] = useState(null);
             const [selectedRecord, setSelectedRecord] = useState(null);
+            const [detailQuestions, setDetailQuestions] = useState(null);
             const [view, setView] = useState('list');
 
             useEffect(() => {
@@ -368,7 +369,26 @@
                                                     <p className="text-4xl font-bold text-[#5A5A40]">{r.graded ? r.score : '--'}</p>
                                                 </div>
                                                 <button 
-                                                    onClick={() => { setSelectedRecord(r); setView('detail'); }}
+                                                    onClick={async () => { 
+                                                        setSelectedRecord(r); 
+                                                        setDetailQuestions(null);
+                                                        setView('detail');
+                                                        
+                                                        // Fetch questions
+                                                        try {
+                                                            const tf = await window.fb.get(window.fb.ref(window.fb.db, `questions_tf/${r.articleId}`));
+                                                            const mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_mc/${r.articleId}`));
+                                                            const sa = await window.fb.get(window.fb.ref(window.fb.db, `questions_sa/${r.articleId}`));
+                                                            
+                                                            setDetailQuestions({
+                                                                tf: tf.val() || [],
+                                                                mc: mc.val() || [],
+                                                                sa: sa.val() || []
+                                                            });
+                                                        } catch (e) {
+                                                            console.error("Failed to fetch detail questions", e);
+                                                        }
+                                                    }}
                                                     className="px-8 py-3.5 bg-[#5A5A40] text-white rounded-2xl font-bold shadow-lg shadow-[#5A5A40]/20 hover:bg-[#4A4A30] transition-all"
                                                 >
                                                     查看詳情
@@ -411,36 +431,113 @@
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                                        <div className="space-y-8">
-                                            <div className="bg-gray-50 p-8 rounded-[2.5rem] border border-gray-100">
-                                                <h4 className="font-bold mb-6 flex items-center gap-3 text-sm uppercase tracking-widest text-gray-400">
-                                                    <Icon name="pen-tool" size={18} /> 我的問答作答
-                                                </h4>
+                                    {detailQuestions ? (
+                                        <div className="space-y-12">
+                                            {/* TF Questions */}
+                                            {detailQuestions.tf.length > 0 && (
                                                 <div className="space-y-6">
-                                                    {Object.entries(selectedRecord.answersSA || {}).map(([id, ans]) => (
-                                                        <div key={id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
-                                                            <p className="text-gray-700 leading-relaxed">{ans}</p>
-                                                        </div>
-                                                    ))}
+                                                    <h4 className="text-2xl font-bold serif flex items-center gap-3 text-gray-700">
+                                                        <Icon name="check-circle" className="text-green-500" size={28} /> 是非題回顧
+                                                    </h4>
+                                                    <div className="grid grid-cols-1 gap-6">
+                                                        {detailQuestions.tf.map((q, idx) => {
+                                                            const studentAns = selectedRecord.answersTF?.[idx];
+                                                            const isCorrect = studentAns === q.answer;
+                                                            return (
+                                                                <div key={idx} className={`p-8 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
+                                                                    <p className="font-bold text-lg mb-4 leading-relaxed">{idx + 1}. {q.content}</p>
+                                                                    <div className="flex gap-8 text-sm">
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">我的答案:</span>
+                                                                            <span className={`font-bold text-lg ${studentAns === q.answer ? "text-green-600" : "text-red-600"}`}>
+                                                                                {studentAns === undefined ? '未答' : (studentAns ? 'O' : 'X')}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">正確答案:</span>
+                                                                            <span className="text-green-600 font-bold text-lg">{q.answer ? 'O' : 'X'}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </div>
-                                        <div className="space-y-8">
-                                            <div className="bg-gray-50 p-8 rounded-[2.5rem] border border-gray-100">
-                                                <h4 className="font-bold mb-6 flex items-center gap-3 text-sm uppercase tracking-widest text-gray-400">
-                                                    <Icon name="image" size={18} /> 我的塗鴉成果
+                                            )}
+
+                                            {/* MC Questions */}
+                                            {detailQuestions.mc.length > 0 && (
+                                                <div className="space-y-6">
+                                                    <h4 className="text-2xl font-bold serif flex items-center gap-3 text-gray-700">
+                                                        <Icon name="list" className="text-blue-500" size={28} /> 選擇題回顧
+                                                    </h4>
+                                                    <div className="grid grid-cols-1 gap-6">
+                                                        {detailQuestions.mc.map((q, idx) => {
+                                                            const studentAnsIdx = selectedRecord.answersMC?.[idx];
+                                                            const isCorrect = studentAnsIdx === q.answer;
+                                                            return (
+                                                                <div key={idx} className={`p-8 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
+                                                                    <p className="font-bold text-lg mb-6 leading-relaxed">{idx + 1}. {q.content}</p>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                                                                        {q.options.map((opt, oIdx) => (
+                                                                            <div key={oIdx} className={`p-4 rounded-2xl border text-sm flex items-center justify-between ${oIdx === q.answer ? "bg-green-100 border-green-200 text-green-800 font-bold" : (oIdx === studentAnsIdx && !isCorrect ? "bg-red-100 border-red-200 text-red-800" : "bg-white border-gray-100 text-gray-500")}`}>
+                                                                                <span>{String.fromCharCode(65 + oIdx)}. {opt}</span>
+                                                                                {oIdx === q.answer && <span className="text-[10px] bg-green-200 px-2 py-0.5 rounded-full uppercase font-bold">正確</span>}
+                                                                                {oIdx === studentAnsIdx && !isCorrect && <span className="text-[10px] bg-red-200 px-2 py-0.5 rounded-full uppercase font-bold">你的選擇</span>}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* SA Questions */}
+                                            {detailQuestions.sa.length > 0 && (
+                                                <div className="space-y-6">
+                                                    <h4 className="text-2xl font-bold serif flex items-center gap-3 text-gray-700">
+                                                        <Icon name="pen-tool" className="text-amber-500" size={28} /> 問答題回顧
+                                                    </h4>
+                                                    <div className="grid grid-cols-1 gap-6">
+                                                        {detailQuestions.sa.map((q, idx) => {
+                                                            const studentAns = selectedRecord.answersSA?.[idx];
+                                                            return (
+                                                                <div key={idx} className="p-8 rounded-[2.5rem] border border-gray-100 bg-gray-50/50">
+                                                                    <p className="font-bold text-lg mb-4 leading-relaxed">{idx + 1}. {q.content}</p>
+                                                                    <div className="bg-white p-6 rounded-2xl border border-gray-100 text-gray-700 italic leading-relaxed">
+                                                                        {studentAns || '未答'}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Drawing */}
+                                            <div className="space-y-6">
+                                                <h4 className="text-2xl font-bold serif flex items-center gap-3 text-gray-700">
+                                                    <Icon name="palette" className="text-purple-500" size={28} /> 我的塗鴉成果
                                                 </h4>
-                                                <div className="bg-white rounded-2xl aspect-video overflow-hidden border border-gray-100 shadow-sm flex items-center justify-center">
-                                                    {selectedRecord.drawingBase64 ? (
-                                                        <img src={selectedRecord.drawingBase64} alt="My Drawing" className="w-full h-full object-contain" />
-                                                    ) : (
-                                                        <div className="text-gray-300 text-sm italic">無塗鴉紀錄</div>
-                                                    )}
+                                                <div className="bg-gray-50 p-8 rounded-[2.5rem] border border-gray-100">
+                                                    <div className="bg-white rounded-2xl aspect-video overflow-hidden border border-gray-100 shadow-inner flex items-center justify-center">
+                                                        {selectedRecord.drawingBase64 ? (
+                                                            <img src={selectedRecord.drawingBase64} alt="My Drawing" className="w-full h-full object-contain" />
+                                                        ) : (
+                                                            <div className="text-gray-300 text-sm italic">無塗鴉紀錄</div>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center py-20 gap-6">
+                                            <Icon name="loader-2" className="animate-spin text-[#5A5A40]" size={48} />
+                                            <p className="text-gray-400 font-bold text-lg">正在讀取題目詳情...</p>
+                                        </div>
+                                    )}
 
                                     <div className="pt-10 border-t border-gray-100">
                                         <h4 className="text-2xl font-bold serif mb-6 flex items-center gap-3">
