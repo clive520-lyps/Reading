@@ -242,6 +242,27 @@
                 assignments.some(as => as.articleId === a.id)
             );
 
+            const handleViewDetail = async (r) => {
+                setSelectedRecord(r); 
+                setDetailQuestions(null);
+                setView('detail');
+                
+                // Fetch questions
+                try {
+                    const tf = await window.fb.get(window.fb.ref(window.fb.db, `questions_tf/${r.articleId}`));
+                    const mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_mc/${r.articleId}`));
+                    const sa = await window.fb.get(window.fb.ref(window.fb.db, `questions_sa/${r.articleId}`));
+                    
+                    setDetailQuestions({
+                        tf: tf.val() || [],
+                        mc: mc.val() || [],
+                        sa: sa.val() || []
+                    });
+                } catch (e) {
+                    console.error("Failed to fetch detail questions", e);
+                }
+            };
+
             return (
                 <div className="min-h-screen flex flex-col">
                     <header className="bg-white border-b border-black/5 px-8 py-5 flex justify-between items-center sticky top-0 z-50 backdrop-blur-md bg-white/90">
@@ -369,26 +390,7 @@
                                                     <p className="text-4xl font-bold text-[#5A5A40]">{r.graded ? r.score : '--'}</p>
                                                 </div>
                                                 <button 
-                                                    onClick={async () => { 
-                                                        setSelectedRecord(r); 
-                                                        setDetailQuestions(null);
-                                                        setView('detail');
-                                                        
-                                                        // Fetch questions
-                                                        try {
-                                                            const tf = await window.fb.get(window.fb.ref(window.fb.db, `questions_tf/${r.articleId}`));
-                                                            const mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_mc/${r.articleId}`));
-                                                            const sa = await window.fb.get(window.fb.ref(window.fb.db, `questions_sa/${r.articleId}`));
-                                                            
-                                                            setDetailQuestions({
-                                                                tf: tf.val() || [],
-                                                                mc: mc.val() || [],
-                                                                sa: sa.val() || []
-                                                            });
-                                                        } catch (e) {
-                                                            console.error("Failed to fetch detail questions", e);
-                                                        }
-                                                    }}
+                                                    onClick={() => handleViewDetail(r)}
                                                     className="px-8 py-3.5 bg-[#5A5A40] text-white rounded-2xl font-bold shadow-lg shadow-[#5A5A40]/20 hover:bg-[#4A4A30] transition-all"
                                                 >
                                                     查看詳情
@@ -578,6 +580,7 @@
             }, [step]);
 
             useEffect(() => {
+                const fetchQuestions = async () => {
                     if (!article || !article.id) {
                         setQuestions({ tf: [], mc: [], sa: [], dr: [] });
                         return;
