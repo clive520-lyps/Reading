@@ -55,14 +55,24 @@
 
         // --- Components ---
         const Icon = ({ name, size = 20, className = "" }) => {
+            const wrapperRef = useRef(null);
+            
             useEffect(() => {
-                if (window.lucide) {
+                if (window.lucide && wrapperRef.current) {
+                    // 手動建立一個 i 標籤供 Lucide 替換，這樣 React 就不會追蹤這個節點
+                    wrapperRef.current.innerHTML = `<i data-lucide="${name}" class="${className}" style="width: ${size}px; height: ${size}px; display: block;"></i>`;
                     try {
-                        lucide.createIcons();
-                    } catch (e) {}
+                        lucide.createIcons({
+                            root: wrapperRef.current
+                        });
+                    } catch (e) {
+                        console.error("Lucide icon creation failed", e);
+                    }
                 }
-            }, [name]);
-            return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
+            }, [name, size, className]);
+
+            // React 只管理這個外層 span，內部的內容由 useEffect 手動控制
+            return <span ref={wrapperRef} className="inline-flex items-center justify-center" style={{ width: size, height: size }}></span>;
         };
 
         const App = () => {
@@ -186,7 +196,7 @@
 
             useEffect(() => {
                 const articlesRef = window.fb.ref(window.fb.db, 'articles');
-                window.fb.onValue(articlesRef, (snapshot) => {
+                const unsubscribeArticles = window.fb.onValue(articlesRef, (snapshot) => {
                     const data = snapshot.val();
                     if (data) {
                         const list = Object.entries(data).map(([id, val]) => ({ id, ...val }));
@@ -195,7 +205,7 @@
                 });
 
                 const recordsRef = window.fb.ref(window.fb.db, 'records');
-                window.fb.onValue(recordsRef, (snapshot) => {
+                const unsubscribeRecords = window.fb.onValue(recordsRef, (snapshot) => {
                     const data = snapshot.val();
                     if (data) {
                         const list = Object.entries(data)
@@ -205,6 +215,11 @@
                         setRecords(list);
                     }
                 });
+
+                return () => {
+                    unsubscribeArticles();
+                    unsubscribeRecords();
+                };
             }, [user.id]);
 
             return (
