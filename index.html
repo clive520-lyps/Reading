@@ -190,6 +190,7 @@
         const StudentDashboard = ({ user, onLogout }) => {
             const [articles, setArticles] = useState([]);
             const [records, setRecords] = useState([]);
+            const [assignments, setAssignments] = useState([]);
             const [selectedArticle, setSelectedArticle] = useState(null);
             const [selectedRecord, setSelectedRecord] = useState(null);
             const [view, setView] = useState('list');
@@ -216,11 +217,29 @@
                     }
                 });
 
+                const assignmentsRef = window.fb.ref(window.fb.db, 'assignments');
+                const unsubscribeAssignments = window.fb.onValue(assignmentsRef, (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        const list = Object.entries(data)
+                            .map(([id, val]) => ({ id, ...val }))
+                            .filter(as => as.classId === user.classId && as.active);
+                        setAssignments(list);
+                    } else {
+                        setAssignments([]);
+                    }
+                });
+
                 return () => {
                     unsubscribeArticles();
                     unsubscribeRecords();
+                    unsubscribeAssignments();
                 };
-            }, [user.id]);
+            }, [user.id, user.classId]);
+
+            const assignedArticles = articles.filter(a => 
+                assignments.some(as => as.articleId === a.id)
+            );
 
             return (
                 <div className="min-h-screen flex flex-col">
@@ -269,19 +288,51 @@
                                 </div>
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                                    {articles.map((a) => (
-                                        <div key={a.id} className="bg-white p-10 rounded-[2.5rem] border border-black/5 shadow-sm hover:shadow-xl hover:-translate-y-2 transition-all duration-300 flex flex-col">
-                                            <h3 className="text-2xl font-bold mb-6 serif line-clamp-2 leading-tight">{a.title}</h3>
-                                            <p className="text-sm text-gray-500 line-clamp-4 mb-10 flex-1 leading-relaxed">{a.content}</p>
-                                            <button 
-                                                onClick={() => { setSelectedArticle(a); setView('quiz'); }}
-                                                className="w-full py-4 bg-[#5A5A40] text-white rounded-2xl font-bold hover:bg-[#4A4A30] shadow-lg shadow-[#5A5A40]/20 transition-all flex items-center justify-center gap-2"
+                                    {assignedArticles.map((a) => {
+                                        const assignment = assignments.find(as => as.articleId === a.id);
+                                        const isExpired = assignment ? Date.now() > assignment.deadline : false;
+                                        
+                                        return (
+                                            <div 
+                                                key={a.id} 
+                                                className={`bg-white p-10 rounded-[2.5rem] border border-black/5 shadow-sm transition-all duration-300 flex flex-col ${isExpired ? "opacity-60 grayscale" : "hover:shadow-xl hover:-translate-y-2"}`}
                                             >
-                                                開始閱讀與測驗
-                                                <Icon name="chevron-right" size={20} />
-                                            </button>
+                                                <div className="flex justify-between items-start mb-6">
+                                                    <h3 className="text-2xl font-bold serif line-clamp-2 leading-tight">{a.title}</h3>
+                                                    {isExpired && (
+                                                        <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
+                                                            已截止
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                
+                                                <p className="text-sm text-gray-500 line-clamp-4 mb-8 flex-1 leading-relaxed">{a.content}</p>
+                                                
+                                                {assignment && (
+                                                    <div className="flex items-center gap-2 mb-8 p-4 bg-gray-50 rounded-2xl text-xs">
+                                                        <Icon name="clock" size={16} className={isExpired ? "text-red-500" : "text-gray-400"} />
+                                                        <span className={isExpired ? "text-red-500 font-bold" : "text-gray-500"}>
+                                                            截止：{new Date(assignment.deadline).toLocaleString()}
+                                                        </span>
+                                                    </div>
+                                                )}
+
+                                                <button 
+                                                    disabled={isExpired}
+                                                    onClick={() => { if (!isExpired) { setSelectedArticle(a); setView('quiz'); } }}
+                                                    className={`w-full py-4 rounded-2xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 ${isExpired ? "bg-gray-100 text-gray-400 cursor-not-allowed shadow-none" : "bg-[#5A5A40] text-white hover:bg-[#4A4A30] shadow-[#5A5A40]/20"}`}
+                                                >
+                                                    {isExpired ? '測驗已結束' : '開始閱讀與測驗'}
+                                                    {!isExpired && <Icon name="chevron-right" size={20} />}
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                    {assignedArticles.length === 0 && (
+                                        <div className="col-span-full py-20 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-200">
+                                            <p className="text-gray-400 text-lg">目前尚無指派的任務，先休息一下吧！</p>
                                         </div>
-                                    ))}
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -671,5 +722,3 @@
     </script>
 </body>
 </html>
-
-
