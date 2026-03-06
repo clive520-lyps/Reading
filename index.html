@@ -56,7 +56,11 @@
         // --- Components ---
         const Icon = ({ name, size = 20, className = "" }) => {
             useEffect(() => {
-                lucide.createIcons();
+                if (window.lucide) {
+                    try {
+                        lucide.createIcons();
+                    } catch (e) {}
+                }
             }, [name]);
             return <i data-lucide={name} style={{ width: size, height: size }} className={className}></i>;
         };
@@ -66,8 +70,20 @@
             const [view, setView] = useState('login');
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState(null);
+            const [fbReady, setFbReady] = useState(false);
+
+            useEffect(() => {
+                const checkFb = setInterval(() => {
+                    if (window.fb && window.fb.db) {
+                        setFbReady(true);
+                        clearInterval(checkFb);
+                    }
+                }, 100);
+                return () => clearInterval(checkFb);
+            }, []);
 
             const handleLogin = async (studentId, pass) => {
+                if (!window.fb) return;
                 setLoading(true);
                 setError(null);
                 try {
@@ -90,6 +106,13 @@
                 setUser(null);
                 setView('login');
             };
+
+            if (!fbReady) return (
+                <div className="flex flex-col items-center justify-center min-h-screen p-4">
+                    <div className="w-16 h-16 border-4 border-[#5A5A40] border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p className="text-gray-500 font-medium">系統初始化中...</p>
+                </div>
+            );
 
             if (view === 'login') return <LoginPortal onLogin={handleLogin} loading={loading} error={error} />;
             return <StudentDashboard user={user} onLogout={handleLogout} />;
@@ -389,20 +412,37 @@
 
             useEffect(() => {
                 const fetchQuestions = async () => {
-                    const tf = await window.fb.get(window.fb.ref(window.fb.db, `questions_tf/${article.id}`));
-                    const mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_mc/${article.id}`));
-                    const sa = await window.fb.get(window.fb.ref(window.fb.db, `questions_sa/${article.id}`));
-                    const dr = await window.fb.get(window.fb.ref(window.fb.db, `questions_dr/${article.id}`));
-                    
-                    setQuestions({
-                        tf: tf.val() || [],
-                        mc: mc.val() || [],
-                        sa: sa.val() || [],
-                        dr: dr.val() || []
-                    });
+                    if (!article || !article.id) {
+                        setQuestions({ tf: [], mc: [], sa: [], dr: [] });
+                        return;
+                    }
+                    try {
+                        // Set a timeout for the fetch
+                        const timeout = setTimeout(() => {
+                            if (!questions) {
+                                setQuestions({ tf: [], mc: [], sa: [], dr: [] });
+                            }
+                        }, 5000);
+
+                        const tf = await window.fb.get(window.fb.ref(window.fb.db, `questions_tf/${article.id}`));
+                        const mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_mc/${article.id}`));
+                        const sa = await window.fb.get(window.fb.ref(window.fb.db, `questions_sa/${article.id}`));
+                        const dr = await window.fb.get(window.fb.ref(window.fb.db, `questions_dr/${article.id}`));
+                        
+                        clearTimeout(timeout);
+                        setQuestions({
+                            tf: tf.val() || [],
+                            mc: mc.val() || [],
+                            sa: sa.val() || [],
+                            dr: dr.val() || []
+                        });
+                    } catch (err) {
+                        console.error("Fetch questions failed:", err);
+                        setQuestions({ tf: [], mc: [], sa: [], dr: [] });
+                    }
                 };
                 fetchQuestions();
-            }, [article.id]);
+            }, [article?.id]);
 
             const handleSubmit = async () => {
                 setIsSubmitting(true);
@@ -471,7 +511,7 @@
                         <div className="bg-white p-16 rounded-[4rem] shadow-2xl border border-black/5">
                             <h1 className="text-4xl font-bold serif mb-12 text-center leading-tight">{article.title}</h1>
                             <div className="markdown-body mb-16 text-xl leading-loose">
-                                {article.content.split('\n').map((p, i) => <p key={i}>{p}</p>)}
+                                {(article.content || '').split('\n').map((p, i) => <p key={i}>{p}</p>)}
                             </div>
                             <button 
                                 onClick={() => setStep('quiz')}
