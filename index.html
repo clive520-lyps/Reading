@@ -251,11 +251,13 @@
                 try {
                     const tf = await window.fb.get(window.fb.ref(window.fb.db, `questions_tf/${r.articleId}`));
                     const mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_mc/${r.articleId}`));
+                    const en_mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_en_mc/${r.articleId}`));
                     const sa = await window.fb.get(window.fb.ref(window.fb.db, `questions_sa/${r.articleId}`));
                     
                     setDetailQuestions({
                         tf: tf.val() || [],
                         mc: mc.val() || [],
+                        en_mc: en_mc.val() || [],
                         sa: sa.val() || []
                     });
                 } catch (e) {
@@ -496,6 +498,35 @@
                                                 </div>
                                             )}
 
+                                            {/* English MC Questions */}
+                                            {detailQuestions.en_mc && detailQuestions.en_mc.length > 0 && (
+                                                <div className="space-y-6">
+                                                    <h4 className="text-2xl font-bold serif flex items-center gap-3 text-gray-700">
+                                                        <Icon name="languages" className="text-indigo-500" size={28} /> 英語選擇題回顧
+                                                    </h4>
+                                                    <div className="grid grid-cols-1 gap-6">
+                                                        {detailQuestions.en_mc.map((q, idx) => {
+                                                            const studentAnsIdx = selectedRecord.answersEnMC?.[idx];
+                                                            const isCorrect = studentAnsIdx === q.answer;
+                                                            return (
+                                                                <div key={idx} className={`p-8 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
+                                                                    <p className="font-bold text-lg mb-6 leading-relaxed">{idx + 1}. {q.content}</p>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                                                                        {q.options.map((opt, oIdx) => (
+                                                                            <div key={oIdx} className={`p-4 rounded-2xl border text-sm flex items-center justify-between ${oIdx === q.answer ? "bg-green-100 border-green-200 text-green-800 font-bold" : (oIdx === studentAnsIdx && !isCorrect ? "bg-red-100 border-red-200 text-red-800" : "bg-white border-gray-100 text-gray-500")}`}>
+                                                                                <span>{String.fromCharCode(65 + oIdx)}. {opt}</span>
+                                                                                {oIdx === q.answer && <span className="text-[10px] bg-green-200 px-2 py-0.5 rounded-full uppercase font-bold">正確</span>}
+                                                                                {oIdx === studentAnsIdx && !isCorrect && <span className="text-[10px] bg-red-200 px-2 py-0.5 rounded-full uppercase font-bold">你的選擇</span>}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             {/* SA Questions */}
                                             {detailQuestions.sa.length > 0 && (
                                                 <div className="space-y-6">
@@ -570,6 +601,7 @@
             const [questions, setQuestions] = useState(null);
             const [answersTF, setAnswersTF] = useState({});
             const [answersMC, setAnswersMC] = useState({});
+            const [answersEnMC, setAnswersEnMC] = useState({});
             const [answersSA, setAnswersSA] = useState({});
             const [isSubmitting, setIsSubmitting] = useState(false);
             const canvasRef = useRef(null);
@@ -595,6 +627,7 @@
 
                         const tf = await window.fb.get(window.fb.ref(window.fb.db, `questions_tf/${article.id}`));
                         const mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_mc/${article.id}`));
+                        const en_mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_en_mc/${article.id}`));
                         const sa = await window.fb.get(window.fb.ref(window.fb.db, `questions_sa/${article.id}`));
                         const dr = await window.fb.get(window.fb.ref(window.fb.db, `questions_dr/${article.id}`));
                         
@@ -602,6 +635,7 @@
                         setQuestions({
                             tf: tf.val() || [],
                             mc: mc.val() || [],
+                            en_mc: en_mc.val() || [],
                             sa: sa.val() || [],
                             dr: dr.val() || []
                         });
@@ -624,6 +658,7 @@
                         articleId: article.id,
                         answersTF,
                         answersMC,
+                        answersEnMC,
                         answersSA,
                         drawingBase64,
                         graded: false,
@@ -751,6 +786,33 @@
                                                             key={optIdx}
                                                             onClick={() => setAnswersMC({...answersMC, [idx]: optIdx})}
                                                             className={`p-6 rounded-2xl border-2 text-left transition-all font-medium ${answersMC[idx] === optIdx ? "bg-blue-500 text-white border-blue-500 shadow-lg shadow-blue-500/30" : "bg-gray-50 border-gray-100 hover:bg-white hover:border-blue-200"}`}
+                                                        >
+                                                            <span className="mr-3 opacity-50 font-mono">{String.fromCharCode(65 + optIdx)}.</span>
+                                                            {opt}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </section>
+                            )}
+
+                            {questions.en_mc && questions.en_mc.length > 0 && (
+                                <section className="bg-white p-12 rounded-[3rem] border border-black/5 shadow-xl">
+                                    <h3 className="text-2xl font-bold mb-10 serif flex items-center gap-3">
+                                        <Icon name="languages" className="text-indigo-500" size={28} /> 英語選擇題
+                                    </h3>
+                                    <div className="space-y-12">
+                                        {questions.en_mc.map((q, idx) => (
+                                            <div key={idx} className="space-y-6">
+                                                <p className="font-bold text-lg leading-relaxed">{idx + 1}. {q.content}</p>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {q.options.map((opt, optIdx) => (
+                                                        <button 
+                                                            key={optIdx}
+                                                            onClick={() => setAnswersEnMC({...answersEnMC, [idx]: optIdx})}
+                                                            className={`p-6 rounded-2xl border-2 text-left transition-all font-medium ${answersEnMC[idx] === optIdx ? "bg-indigo-500 text-white border-indigo-500 shadow-lg shadow-indigo-500/30" : "bg-gray-50 border-gray-100 hover:bg-white hover:border-indigo-200"}`}
                                                         >
                                                             <span className="mr-3 opacity-50 font-mono">{String.fromCharCode(65 + optIdx)}.</span>
                                                             {opt}
