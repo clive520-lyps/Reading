@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>雲端閱讀認證 - 學生端系統V1</title>
+    <title>雲端閱讀認證 - 學生端系統V2</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts -->
@@ -729,7 +729,7 @@
                                 <Icon name="arrow-right" size={24} />
                             </button>
                         </div>
-                    ) : (
+                    ) : step === 'quiz' ? (
                         <div className="space-y-16 pb-32">
                             <div className="bg-[#5A5A40] text-white p-16 rounded-[4rem] shadow-2xl shadow-[#5A5A40]/30 text-center space-y-6 relative overflow-hidden">
                                 <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
