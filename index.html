@@ -14,7 +14,6 @@
         body { font-family: 'Inter', sans-serif; background-color: #F5F5F0; color: #141414; }
         .serif { font-family: 'Cormorant Garamond', serif; }
         .mono { font-family: 'JetBrains Mono', monospace; }
-        canvas { border: 2px dashed #e5e7eb; border-radius: 1.5rem; background-color: #f9fafb; cursor: crosshair; }
         .markdown-body h1 { font-family: 'Cormorant Garamond', serif; font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; }
         .markdown-body p { margin-bottom: 1rem; line-height: 1.625; color: #374151; }
     </style>
@@ -549,21 +548,6 @@
                                                 </div>
                                             )}
 
-                                            {/* Drawing */}
-                                            <div className="space-y-6">
-                                                <h4 className="text-2xl font-bold serif flex items-center gap-3 text-gray-700">
-                                                    <Icon name="palette" className="text-purple-500" size={28} /> 我的塗鴉成果
-                                                </h4>
-                                                <div className="bg-gray-50 p-8 rounded-[2.5rem] border border-gray-100">
-                                                    <div className="bg-white rounded-2xl aspect-video overflow-hidden border border-gray-100 shadow-inner flex items-center justify-center">
-                                                        {selectedRecord.drawingBase64 ? (
-                                                            <img src={selectedRecord.drawingBase64} alt="My Drawing" className="w-full h-full object-contain" />
-                                                        ) : (
-                                                            <div className="text-gray-300 text-sm italic">無塗鴉紀錄</div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
                                         </div>
                                     ) : (
                                         <div className="flex flex-col items-center justify-center py-20 gap-6">
@@ -584,7 +568,9 @@
                                         ) : (
                                             <div className="bg-amber-50 p-10 rounded-[2.5rem] border border-amber-100 text-amber-700 flex items-center gap-4 shadow-inner">
                                                 <Icon name="loader-2" className="animate-spin" size={24} />
-                                                <span className="font-bold">老師正在批改中，請稍後再回來查看成績喔！</span>
+                                                <span className="font-bold">
+                                                    {selectedRecord.status === 'grading' ? 'AI 老師正在自動批改中，請稍候...' : '老師正在批改中，請稍後再回來查看成績喔！'}
+                                                </span>
                                             </div>
                                         )}
                                     </div>
@@ -604,8 +590,6 @@
             const [answersEnMC, setAnswersEnMC] = useState({});
             const [answersSA, setAnswersSA] = useState({});
             const [isSubmitting, setIsSubmitting] = useState(false);
-            const canvasRef = useRef(null);
-            const [isDrawing, setIsDrawing] = useState(false);
 
             useEffect(() => {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -649,14 +633,14 @@
             useEffect(() => {
                 const fetchQuestions = async () => {
                     if (!article || !article.id) {
-                        setQuestions({ tf: [], mc: [], sa: [], dr: [] });
+                        setQuestions({ tf: [], mc: [], sa: [] });
                         return;
                     }
                     try {
                         // Set a timeout for the fetch
                         const timeout = setTimeout(() => {
                             if (!questions) {
-                                setQuestions({ tf: [], mc: [], sa: [], dr: [] });
+                                setQuestions({ tf: [], mc: [], sa: [] });
                             }
                         }, 5000);
 
@@ -664,19 +648,17 @@
                         const mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_mc/${article.id}`));
                         const en_mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_en_mc/${article.id}`));
                         const sa = await window.fb.get(window.fb.ref(window.fb.db, `questions_sa/${article.id}`));
-                        const dr = await window.fb.get(window.fb.ref(window.fb.db, `questions_dr/${article.id}`));
                         
                         clearTimeout(timeout);
                         setQuestions({
                             tf: tf.val() || [],
                             mc: mc.val() || [],
                             en_mc: en_mc.val() || [],
-                            sa: sa.val() || [],
-                            dr: dr.val() || []
+                            sa: sa.val() || []
                         });
                     } catch (err) {
                         console.error("Fetch questions failed:", err);
-                        setQuestions({ tf: [], mc: [], sa: [], dr: [] });
+                        setQuestions({ tf: [], mc: [], sa: [] });
                     }
                 };
                 fetchQuestions();
@@ -685,7 +667,6 @@
             const handleSubmit = async () => {
                 setIsSubmitting(true);
                 try {
-                    const drawingBase64 = canvasRef.current?.toDataURL() || '';
                     const recordRef = window.fb.push(window.fb.ref(window.fb.db, 'records'));
                     await window.fb.set(recordRef, {
                         timestamp: Date.now(),
@@ -695,10 +676,10 @@
                         answersMC,
                         answersEnMC,
                         answersSA,
-                        drawingBase64,
                         graded: false,
                         score: 0,
-                        feedback: ''
+                        feedback: '',
+                        status: 'pending'
                     });
                     setStep('results');
                     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -707,28 +688,6 @@
                 } finally {
                     setIsSubmitting(false);
                 }
-            };
-
-            const startDrawing = (e) => {
-                const canvas = canvasRef.current;
-                if (!canvas) return;
-                const ctx = canvas.getContext('2d');
-                ctx.lineWidth = 3;
-                ctx.lineCap = 'round';
-                ctx.strokeStyle = '#5A5A40';
-                setIsDrawing(true);
-                const rect = canvas.getBoundingClientRect();
-                ctx.beginPath();
-                ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-            };
-
-            const draw = (e) => {
-                if (!isDrawing) return;
-                const canvas = canvasRef.current;
-                const ctx = canvas.getContext('2d');
-                const rect = canvas.getBoundingClientRect();
-                ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-                ctx.stroke();
             };
 
             if (!questions) return <div className="flex items-center justify-center py-40"><Icon name="loader-2" className="animate-spin text-[#5A5A40]" size={64} /></div>;
@@ -877,42 +836,6 @@
                                                     onChange={(e) => setAnswersSA({...answersSA, [idx]: e.target.value})}
                                                     className="w-full p-8 bg-gray-50 border-2 border-gray-100 rounded-[2rem] outline-none focus:ring-4 focus:ring-[#5A5A40]/10 focus:border-[#5A5A40] transition-all text-lg"
                                                 />
-                                            </div>
-                                        ))}
-                                    </div>
-                                </section>
-                            )}
-
-                            {questions.dr.length > 0 && (
-                                <section className="bg-white p-12 rounded-[3rem] border border-black/5 shadow-xl">
-                                    <h3 className="text-2xl font-bold mb-10 serif flex items-center gap-3">
-                                        <Icon name="palette" className="text-purple-500" size={28} /> 塗鴉題
-                                    </h3>
-                                    <div className="space-y-8">
-                                        {questions.dr.map((q, idx) => (
-                                            <div key={idx} className="space-y-6">
-                                                <p className="font-bold text-lg leading-relaxed">{idx + 1}. {q.content}</p>
-                                                <div className="relative group">
-                                                    <canvas 
-                                                        ref={canvasRef}
-                                                        width={800}
-                                                        height={450}
-                                                        onMouseDown={startDrawing}
-                                                        onMouseMove={draw}
-                                                        onMouseUp={() => setIsDrawing(false)}
-                                                        onMouseLeave={() => setIsDrawing(false)}
-                                                        className="w-full h-auto shadow-inner"
-                                                    />
-                                                    <button 
-                                                        onClick={() => {
-                                                            const ctx = canvasRef.current?.getContext('2d');
-                                                            ctx?.clearRect(0, 0, 800, 450);
-                                                        }}
-                                                        className="absolute bottom-6 right-6 p-4 bg-white rounded-2xl shadow-xl text-gray-400 hover:text-red-500 transition-all hover:scale-110 active:scale-95"
-                                                    >
-                                                        <Icon name="trash-2" size={24} />
-                                                    </button>
-                                                </div>
                                             </div>
                                         ))}
                                     </div>
