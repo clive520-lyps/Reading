@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>雲端閱讀認證 - 學生端系統V2</title>
+    <title>雲端閱讀認證 - 學生端系統</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts -->
@@ -612,6 +612,41 @@
             }, [step]);
 
             useEffect(() => {
+                const preventDefault = (e) => {
+                    if (step === 'reading' || step === 'quiz') {
+                        e.preventDefault();
+                        return false;
+                    }
+                };
+
+                const handleKeydown = (e) => {
+                    if (step === 'reading' || step === 'quiz') {
+                        // Prevent Ctrl+C, Ctrl+V, Ctrl+X, and Cmd equivalents
+                        if ((e.ctrlKey || e.metaKey) && ['c', 'v', 'x'].includes(e.key.toLowerCase())) {
+                            e.preventDefault();
+                            return false;
+                        }
+                    }
+                };
+
+                if (step === 'reading' || step === 'quiz') {
+                    document.addEventListener('copy', preventDefault);
+                    document.addEventListener('paste', preventDefault);
+                    document.addEventListener('cut', preventDefault);
+                    document.addEventListener('contextmenu', preventDefault);
+                    document.addEventListener('keydown', handleKeydown);
+                }
+
+                return () => {
+                    document.removeEventListener('copy', preventDefault);
+                    document.removeEventListener('paste', preventDefault);
+                    document.removeEventListener('cut', preventDefault);
+                    document.removeEventListener('contextmenu', preventDefault);
+                    document.removeEventListener('keydown', handleKeydown);
+                };
+            }, [step]);
+
+            useEffect(() => {
                 const fetchQuestions = async () => {
                     if (!article || !article.id) {
                         setQuestions({ tf: [], mc: [], sa: [], dr: [] });
@@ -699,7 +734,7 @@
             if (!questions) return <div className="flex items-center justify-center py-40"><Icon name="loader-2" className="animate-spin text-[#5A5A40]" size={64} /></div>;
 
             return (
-                <div className="max-w-4xl mx-auto">
+                <div className={`max-w-4xl mx-auto ${(step === 'reading' || step === 'quiz') ? 'select-none' : ''}`}>
                     <div className="flex justify-between items-center mb-10">
                         <button onClick={onBack} className="text-gray-500 hover:text-gray-800 flex items-center gap-2 font-bold">
                             <Icon name="chevron-left" size={20} />
