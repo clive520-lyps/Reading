@@ -423,9 +423,12 @@
                                     <div className="flex justify-between items-start border-b border-gray-100 pb-10">
                                         <div>
                                             <h2 className="text-4xl font-bold serif mb-3">{articles.find(a => a.id === selectedRecord.articleId)?.title}</h2>
-                                            <p className="text-gray-400 flex items-center gap-2">
+                                            <p className="text-gray-400 flex items-center gap-2 flex-wrap">
                                                 <Icon name="clock" size={16} />
-                                                測驗時間：{new Date(selectedRecord.timestamp).toLocaleString()}
+                                                <span>測驗時間：{new Date(selectedRecord.timestamp).toLocaleString()}</span>
+                                                {selectedRecord.duration !== undefined && (
+                                                    <span className="ml-4 bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold font-mono">作答時間：{Math.floor(selectedRecord.duration / 60)} 分 {selectedRecord.duration % 60} 秒</span>
+                                                )}
                                             </p>
                                         </div>
                                         <div className="bg-gray-50 px-10 py-6 rounded-[2rem] border border-gray-100 text-center shadow-inner">
@@ -590,6 +593,13 @@
             const [answersEnMC, setAnswersEnMC] = useState({});
             const [answersSA, setAnswersSA] = useState({});
             const [isSubmitting, setIsSubmitting] = useState(false);
+            const [startTime, setStartTime] = useState(null);
+
+            useEffect(() => {
+                if (step === 'quiz') {
+                    setStartTime(Date.now());
+                }
+            }, [step]);
 
             useEffect(() => {
                 window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -667,6 +677,7 @@
             const handleSubmit = async () => {
                 setIsSubmitting(true);
                 try {
+                    const duration = startTime ? Math.round((Date.now() - startTime) / 1000) : 0;
                     const recordRef = window.fb.push(window.fb.ref(window.fb.db, 'records'));
                     await window.fb.set(recordRef, {
                         timestamp: Date.now(),
@@ -679,7 +690,8 @@
                         graded: false,
                         score: 0,
                         feedback: '',
-                        status: 'pending'
+                        status: 'pending',
+                        duration
                     });
                     setStep('results');
                     window.scrollTo({ top: 0, behavior: 'smooth' });
