@@ -237,9 +237,19 @@
                 };
             }, [user.id, user.classId]);
 
-            const assignedArticles = articles.filter(a => 
-                assignments.some(as => as.articleId === a.id)
-            );
+            const assignedArticles = articles
+                .filter(a => assignments.some(as => as.articleId === a.id))
+                .sort((a, b) => {
+                    const assignmentA = assignments.find(as => as.articleId === a.id);
+                    const assignmentB = assignments.find(as => as.articleId === b.id);
+                    const isExpiredA = assignmentA ? Date.now() > assignmentA.deadline : false;
+                    const isExpiredB = assignmentB ? Date.now() > assignmentB.deadline : false;
+                    
+                    if (isExpiredA && !isExpiredB) return 1;
+                    if (!isExpiredA && isExpiredB) return -1;
+                    
+                    return (assignmentB?.createdAt || 0) - (assignmentA?.createdAt || 0);
+                });
 
             const handleViewDetail = async (r) => {
                 setSelectedRecord(r); 
@@ -379,9 +389,17 @@
                                                 </div>
                                                 <div>
                                                     <h4 className="font-bold text-xl mb-1">{articles.find(a => a.id === r.articleId)?.title || '未知文章'}</h4>
-                                                    <p className="text-sm text-gray-400 flex items-center gap-2">
-                                                        <Icon name="calendar" size={14} />
-                                                        {new Date(r.timestamp).toLocaleString()}
+                                                    <p className="text-sm text-gray-400 flex items-center gap-4 flex-wrap">
+                                                        <span className="flex items-center gap-2">
+                                                            <Icon name="calendar" size={14} />
+                                                            {new Date(r.timestamp).toLocaleString()}
+                                                        </span>
+                                                        {r.duration !== undefined && (
+                                                            <span className="flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs font-bold font-mono">
+                                                                <Icon name="clock" size={12} />
+                                                                <span>作答：{Math.floor(r.duration / 60)} 分 {r.duration % 60} 秒</span>
+                                                            </span>
+                                                        )}
                                                     </p>
                                                 </div>
                                             </div>
