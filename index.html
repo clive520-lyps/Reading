@@ -815,15 +815,18 @@
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                     {assignedArticles.map((a) => {
-                                        const assignment = assignments.find(as => as.articleId === a.id);
+                                        const assignment = a.assignment || assignments.find(as => as.articleId === a.id);
                                         const isExpired = assignment ? Date.now() > assignment.deadline : false;
+                                        const hasCompleted = records.some(r => r.articleId === a.id);
+                                        const isSingle = assignment?.attemptType === 'single';
+                                        const isDisabled = isExpired || (isSingle && hasCompleted);
                                         const textType = a.textType ? TEXT_TYPE_LABELS[a.textType] : TEXT_TYPE_LABELS.literary;
                                         const gradeLabel = a.gradeLevel ? (GRADE_LEVEL_LABELS[a.gradeLevel] || '高年級') : null;
 
                                         return (
                                             <div 
                                                 key={a.id} 
-                                                className={`bg-white p-8 rounded-[2.5rem] border border-black/5 shadow-sm transition-all duration-300 flex flex-col ${isExpired ? "opacity-60 grayscale" : "hover:shadow-xl hover:-translate-y-2"}`}
+                                                className={`bg-white p-8 rounded-[2.5rem] border border-black/5 shadow-sm transition-all duration-300 flex flex-col ${isDisabled ? "opacity-60 grayscale" : "hover:shadow-xl hover:-translate-y-2"}`}
                                             >
                                                 {/* Badges */}
                                                 <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -837,32 +840,56 @@
                                                             {gradeLabel}
                                                         </span>
                                                     )}
-                                                    {isExpired && (
+                                                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${isSingle ? "bg-amber-100 text-amber-800" : "bg-blue-100 text-blue-800"}`}>
+                                                        {isSingle ? '單次測驗' : '多次測驗'}
+                                                    </span>
+                                                    {isExpired ? (
                                                         <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ml-auto">
                                                             已截止
                                                         </span>
-                                                    )}
+                                                    ) : (hasCompleted && isSingle ? (
+                                                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ml-auto">
+                                                            已完成
+                                                        </span>
+                                                    ) : null)}
                                                 </div>
 
                                                 <h3 className="text-2xl font-bold serif line-clamp-2 leading-tight mb-3">{a.title}</h3>
                                                 <p className="text-sm text-gray-500 line-clamp-4 mb-6 flex-1 leading-relaxed">{a.content}</p>
                                                 
                                                 {assignment && (
-                                                    <div className="flex items-center gap-2 mb-6 p-3.5 bg-gray-50 rounded-2xl text-xs">
-                                                        <Icon name="clock" size={16} className={isExpired ? "text-red-500" : "text-gray-400"} />
-                                                        <span className={isExpired ? "text-red-500 font-bold" : "text-gray-500"}>
-                                                            截止：{new Date(assignment.deadline).toLocaleString()}
-                                                        </span>
+                                                    <div className="space-y-2 mb-6 p-3.5 bg-gray-50 rounded-2xl text-xs">
+                                                        <div className="flex items-center gap-2">
+                                                            <Icon name="clock" size={16} className={isExpired ? "text-red-500" : "text-gray-400"} />
+                                                            <span className={isExpired ? "text-red-500 font-bold" : "text-gray-500"}>
+                                                                截止：{new Date(assignment.deadline).toLocaleString()}
+                                                            </span>
+                                                        </div>
+                                                        {isSingle && hasCompleted && (
+                                                            <div className="text-[11px] text-amber-600 font-bold flex items-center gap-1 pt-1">
+                                                                <Icon name="check-circle" size={12} /> 您已完成此單次測驗
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
 
                                                 <button 
-                                                    disabled={isExpired}
-                                                    onClick={() => { if (!isExpired) { setSelectedArticle(a); setView('quiz'); } }}
-                                                    className={`w-full py-4 rounded-2xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 ${isExpired ? "bg-gray-100 text-gray-400 cursor-not-allowed shadow-none" : "bg-[#5A5A40] text-white hover:bg-[#4A4A30] shadow-[#5A5A40]/20"}`}
+                                                    disabled={isDisabled}
+                                                    onClick={() => {
+                                                        if (isDisabled) return;
+                                                        const latestAssignment = assignment || assignments.find(as => as.articleId === a.id);
+                                                        const completedNow = records.some(r => r.articleId === a.id);
+                                                        if (latestAssignment?.attemptType === 'single' && completedNow) {
+                                                            alert('此為單次測驗，您已完成過無法再次作答');
+                                                            return;
+                                                        }
+                                                        setSelectedArticle(a);
+                                                        setView('quiz');
+                                                    }}
+                                                    className={`w-full py-4 rounded-2xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${isDisabled ? "bg-gray-100 text-gray-400 cursor-not-allowed shadow-none" : "bg-[#5A5A40] text-white hover:bg-[#4A4A30] shadow-[#5A5A40]/20"}`}
                                                 >
-                                                    {isExpired ? '測驗已結束' : '開始閱讀與測驗'}
-                                                    {!isExpired && <Icon name="chevron-right" size={20} />}
+                                                    {isExpired ? '測驗已結束' : (isSingle && hasCompleted ? '已完成（單次測驗已繳交）' : '開始閱讀與測驗')}
+                                                    {!isDisabled && <Icon name="chevron-right" size={20} />}
                                                 </button>
                                             </div>
                                         );
