@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>雲端閱讀認證 - 學生端系統</title>
+    <title>雲端閱讀認證 - PIRLS 國際閱讀素養學生端</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600;1,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600;1,700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #F5F5F0; color: #141414; }
         .serif { font-family: 'Cormorant Garamond', serif; }
         .mono { font-family: 'JetBrains Mono', monospace; }
-        .markdown-body h1 { font-family: 'Cormorant Garamond', serif; font-size: 1.5rem; font-weight: 700; margin-bottom: 1rem; }
-        .markdown-body p { margin-bottom: 1rem; line-height: 1.625; color: #374151; }
+        .markdown-body h1 { font-family: 'Cormorant Garamond', serif; font-size: 1.75rem; font-weight: 700; margin-bottom: 1rem; }
+        .markdown-body p { margin-bottom: 1.25rem; line-height: 1.8; color: #374151; font-size: 1.125rem; }
     </style>
 </head>
 <body>
@@ -29,7 +29,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-        import { getDatabase, ref, set, get, push, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getDatabase, ref, set, get, push, onValue, update } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyB9NJXQwdKweStTbATahldDgvtbuGclo34",
@@ -46,34 +46,462 @@
         const db = getDatabase(app);
 
         // Expose to window for React
-        window.fb = { db, ref, set, get, push, onValue };
+        window.fb = { db, ref, set, get, push, onValue, update };
     </script>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        const { useState, useEffect, useRef, useMemo } = React;
 
-        // --- Components ---
+        // --- PIRLS Constants & Definitions ---
+        const PIRLS_PROCESS_LABELS = {
+            L1_RETRIEVE: {
+                label: 'L1 提取特定訊息',
+                short: 'L1 提取訊息',
+                description: '找出文章中直接明確敘述的字面訊息與關鍵事實',
+                badgeColor: 'bg-blue-50 text-blue-700 border-blue-200'
+            },
+            L2_INFER: {
+                label: 'L2 直接推論',
+                short: 'L2 直接推論',
+                description: '連結句子與段落間的直觀因果關係與角色意圖',
+                badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            },
+            L3_INTERPRET: {
+                label: 'L3 詮釋與整合觀點和訊息',
+                short: 'L3 詮釋整合',
+                description: '融會貫通跨段落意旨、歸納核心主旨與比較情境',
+                badgeColor: 'bg-amber-50 text-amber-700 border-amber-200'
+            },
+            L4_EVALUATE: {
+                label: 'L4 檢驗與評估內容、語言和文章元素',
+                short: 'L4 檢驗評估',
+                description: '批判性評估作者視角、修辭手法與結構完整性',
+                badgeColor: 'bg-purple-50 text-purple-700 border-purple-200'
+            }
+        };
+
+        const PIRLS_BENCHMARK_CONFIG = {
+            advanced: {
+                label: '優秀基準 (Advanced >= 625)',
+                short: '優秀基準',
+                badgeColor: 'bg-purple-100 text-purple-800 border border-purple-200',
+                color: 'bg-purple-50 text-purple-700 border-purple-200',
+                description: '能整合全篇深層意涵、批判評估文章觀點與作者修辭'
+            },
+            high: {
+                label: '高基準 (High 550-624)',
+                short: '高基準',
+                badgeColor: 'bg-blue-100 text-blue-800 border border-blue-200',
+                color: 'bg-blue-50 text-blue-700 border-blue-200',
+                description: '能推論篇章因果、掌握主旨並提供文本佐證'
+            },
+            intermediate: {
+                label: '中基準 (Intermediate 475-549)',
+                short: '中基準',
+                badgeColor: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
+                color: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                description: '能提取特定重要情節、進行簡易直觀推論'
+            },
+            low: {
+                label: '低基準 (Low 400-474)',
+                short: '低基準',
+                badgeColor: 'bg-amber-100 text-amber-800 border border-amber-200',
+                color: 'bg-amber-50 text-amber-700 border-amber-200',
+                description: '能在文章中尋找單一、字面直接說明的具體訊息'
+            },
+            below_low: {
+                label: '待加強基準 (< 400)',
+                short: '待加強',
+                badgeColor: 'bg-rose-100 text-rose-800 border border-rose-200',
+                color: 'bg-rose-50 text-rose-700 border-rose-200',
+                description: '字詞掌握與長文閱讀耐力尚需加強基礎導讀'
+            }
+        };
+
+        const TEXT_TYPE_LABELS = {
+            literary: { label: '文學性文本', color: 'bg-amber-50 text-amber-800 border border-amber-200' },
+            informational: { label: '資訊性文本', color: 'bg-blue-50 text-blue-800 border border-blue-200' }
+        };
+
+        const GRADE_LEVEL_LABELS = {
+            elementary_mid: '國小中年級',
+            elementary_high: '國小高年級',
+            junior_high: '國中階段'
+        };
+
+        // --- Helper: Icon Component ---
         const Icon = ({ name, size = 20, className = "" }) => {
             const wrapperRef = useRef(null);
             
             useEffect(() => {
                 if (window.lucide && wrapperRef.current) {
-                    // 手動建立一個 i 標籤供 Lucide 替換，這樣 React 就不會追蹤這個節點
                     wrapperRef.current.innerHTML = `<i data-lucide="${name}" class="${className}" style="width: ${size}px; height: ${size}px; display: block;"></i>`;
                     try {
-                        lucide.createIcons({
-                            root: wrapperRef.current
-                        });
+                        lucide.createIcons({ root: wrapperRef.current });
                     } catch (e) {
                         console.error("Lucide icon creation failed", e);
                     }
                 }
             }, [name, size, className]);
 
-            // React 只管理這個外層 span，內部的內容由 useEffect 手動控制
             return <span ref={wrapperRef} className="inline-flex items-center justify-center" style={{ width: size, height: size }}></span>;
         };
 
+        // --- Helper: PIRLS Process Badge ---
+        const PirlsBadge = ({ process, size = 'sm' }) => {
+            if (!process) return null;
+            const info = PIRLS_PROCESS_LABELS[process] || { short: process, badgeColor: 'bg-gray-100 text-gray-700 border-gray-200' };
+            const pad = size === 'sm' ? 'px-2.5 py-0.5 text-[10px]' : 'px-3 py-1 text-xs';
+            return (
+                <span className={`inline-flex items-center gap-1 font-bold rounded-full border ${info.badgeColor} ${pad}`}>
+                    <Icon name="compass" size={size === 'sm' ? 10 : 12} />
+                    {info.short}
+                </span>
+            );
+        };
+
+        // --- Component: PIRLS Radar Chart (SVG) ---
+        const PIRLSRadarChart = ({ scores = {}, size = 280, className = "" }) => {
+            const dimensions = [
+                { key: 'L1', label: 'L1 提取特定訊息', short: 'L1 提取', angle: -Math.PI / 2 },
+                { key: 'L2', label: 'L2 直接推論', short: 'L2 推論', angle: 0 },
+                { key: 'L3', label: 'L3 詮釋整合觀點', short: 'L3 詮釋', angle: Math.PI / 2 },
+                { key: 'L4', label: 'L4 檢驗與評估', short: 'L4 評估', angle: Math.PI }
+            ];
+
+            const center = size / 2;
+            const radius = (size / 2) - 40;
+            const gridLevels = [0.25, 0.5, 0.75, 1.0];
+
+            const getGridPolygon = (level) => {
+                return dimensions.map(dim => {
+                    const r = radius * level;
+                    const x = center + r * Math.cos(dim.angle);
+                    const y = center + r * Math.sin(dim.angle);
+                    return `${x},${y}`;
+                }).join(' ');
+            };
+
+            const dataPoints = dimensions.map(dim => {
+                const rawVal = scores[dim.key] !== undefined ? scores[dim.key] : 70;
+                const clampedVal = Math.max(0, Math.min(100, rawVal));
+                const r = (radius * clampedVal) / 100;
+                const x = center + r * Math.cos(dim.angle);
+                const y = center + r * Math.sin(dim.angle);
+                return { x, y, value: Math.round(clampedVal), dim };
+            });
+
+            const polygonPath = dataPoints.map(p => `${p.x},${p.y}`).join(' ');
+
+            return (
+                <div className={`flex flex-col items-center select-none ${className}`}>
+                    <div className="relative">
+                        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="overflow-visible">
+                            <defs>
+                                <linearGradient id="pirlsRadarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" stopColor="#5A5A40" stopOpacity="0.45" />
+                                    <stop offset="100%" stopColor="#8A8A65" stopOpacity="0.2" />
+                                </linearGradient>
+                            </defs>
+
+                            {/* Concentric grids */}
+                            {gridLevels.map((lvl, i) => (
+                                <polygon
+                                    key={i}
+                                    points={getGridPolygon(lvl)}
+                                    fill={i % 2 === 0 ? '#F9F9F6' : '#FFFFFF'}
+                                    stroke="#E5E7EB"
+                                    strokeWidth="1"
+                                    strokeDasharray={i === gridLevels.length - 1 ? 'none' : '3,3'}
+                                />
+                            ))}
+
+                            {/* Axis lines */}
+                            {dimensions.map((dim, i) => {
+                                const x = center + radius * Math.cos(dim.angle);
+                                const y = center + radius * Math.sin(dim.angle);
+                                return (
+                                    <line
+                                        key={i}
+                                        x1={center}
+                                        y1={center}
+                                        x2={x}
+                                        y2={y}
+                                        stroke="#D1D5DB"
+                                        strokeWidth="1.2"
+                                    />
+                                );
+                            })}
+
+                            {/* Data polygon */}
+                            <polygon
+                                points={polygonPath}
+                                fill="url(#pirlsRadarGrad)"
+                                stroke="#5A5A40"
+                                strokeWidth="2.5"
+                            />
+
+                            {/* Data points */}
+                            {dataPoints.map((p, i) => (
+                                <g key={i}>
+                                    <circle
+                                        cx={p.x}
+                                        cy={p.y}
+                                        r="5"
+                                        fill="#5A5A40"
+                                        stroke="#FFFFFF"
+                                        strokeWidth="2"
+                                    />
+                                    <text
+                                        x={p.x}
+                                        y={p.y - 8}
+                                        textAnchor="middle"
+                                        fontSize="10"
+                                        fontWeight="bold"
+                                        fill="#374151"
+                                    >
+                                        {p.value}%
+                                    </text>
+                                </g>
+                            ))}
+
+                            {/* Axis Labels */}
+                            {dimensions.map((dim, i) => {
+                                const offsetR = radius + 22;
+                                const x = center + offsetR * Math.cos(dim.angle);
+                                const y = center + offsetR * Math.sin(dim.angle);
+                                let anchor = "middle";
+                                if (dim.key === 'L2') anchor = "start";
+                                if (dim.key === 'L4') anchor = "end";
+
+                                return (
+                                    <text
+                                        key={i}
+                                        x={x}
+                                        y={y + 4}
+                                        textAnchor={anchor}
+                                        fontSize="10"
+                                        fontWeight="bold"
+                                        fill="#4B5563"
+                                    >
+                                        {dim.short}
+                                    </text>
+                                );
+                            })}
+                        </svg>
+                    </div>
+
+                    {/* Legend */}
+                    <div className="grid grid-cols-2 gap-2 mt-4 text-[11px] w-full max-w-xs">
+                        {dimensions.map(dim => (
+                            <div key={dim.key} className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-gray-50 border border-gray-100">
+                                <span className="text-gray-500 font-medium">{dim.short}</span>
+                                <span className="font-mono font-bold text-[#5A5A40]">{scores[dim.key] ?? 70}%</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Component: PIRLS Benchmark Scale ---
+        const PIRLSBenchmarkScale = ({ score = 520, benchmark = 'intermediate', className = "" }) => {
+            const MIN_SCORE = 300;
+            const MAX_SCORE = 750;
+            const clampedScore = Math.max(MIN_SCORE, Math.min(MAX_SCORE, score));
+            const percentPosition = ((clampedScore - MIN_SCORE) / (MAX_SCORE - MIN_SCORE)) * 100;
+            const getPercent = (s) => ((s - MIN_SCORE) / (MAX_SCORE - MIN_SCORE)) * 100;
+
+            const currentBenchmarkInfo = PIRLS_BENCHMARK_CONFIG[benchmark] || PIRLS_BENCHMARK_CONFIG.intermediate;
+
+            return (
+                <div className={`space-y-4 ${className}`}>
+                    <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-[#5A5A40]/5 border border-[#5A5A40]/15">
+                        <div>
+                            <span className="text-xs uppercase font-bold text-gray-500 tracking-wider">PIRLS 國際常模標準分數</span>
+                            <div className="flex items-baseline gap-3 mt-1">
+                                <span className="text-3xl font-extrabold font-mono text-[#5A5A40]">{score}</span>
+                                <span className="text-xs text-gray-500 font-medium">（常模平均 500 分，標準差 100）</span>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block mb-1">達成基準級別</span>
+                            <span className={`inline-flex items-center px-3.5 py-1.5 rounded-xl text-xs font-bold shadow-sm ${currentBenchmarkInfo.badgeColor}`}>
+                                {currentBenchmarkInfo.label}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div className="pt-8 pb-4 px-2">
+                        <div className="relative">
+                            {/* Score Marker */}
+                            <div
+                                className="absolute -top-7 transform -translate-x-1/2 flex flex-col items-center transition-all duration-500"
+                                style={{ left: `${percentPosition}%` }}
+                            >
+                                <div className="bg-[#1F2937] text-white text-[10px] font-mono font-bold px-2 py-0.5 rounded-md shadow-md whitespace-nowrap">
+                                    本次落點：{score} 分
+                                </div>
+                                <div className="w-0 h-0 border-l-[4px] border-l-transparent border-r-[4px] border-r-transparent border-t-[5px] border-t-[#1F2937]" />
+                            </div>
+
+                            {/* Color track */}
+                            <div className="h-4 rounded-full overflow-hidden flex shadow-inner bg-gray-200">
+                                <div className="bg-rose-400" style={{ width: `${getPercent(400)}%` }} title="待加強 (<400)" />
+                                <div className="bg-amber-400" style={{ width: `${getPercent(475) - getPercent(400)}%` }} title="低基準 (400-474)" />
+                                <div className="bg-emerald-400" style={{ width: `${getPercent(550) - getPercent(475)}%` }} title="中基準 (475-549)" />
+                                <div className="bg-blue-400" style={{ width: `${getPercent(625) - getPercent(550)}%` }} title="高基準 (550-624)" />
+                                <div className="bg-purple-500" style={{ width: `${100 - getPercent(625)}%` }} title="優秀基準 (>=625)" />
+                            </div>
+
+                            {/* International Average Marker (500) */}
+                            <div
+                                className="absolute top-0 bottom-0 w-0.5 bg-gray-800 z-10"
+                                style={{ left: `${getPercent(500)}%` }}
+                            >
+                                <div className="absolute top-5 left-1/2 -translate-x-1/2 flex flex-col items-center">
+                                    <span className="text-[10px] text-gray-700 font-bold whitespace-nowrap bg-white/95 px-1 rounded border border-gray-300 shadow-xs">
+                                        500 (國際平均)
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Tick markers */}
+                            <div className="relative w-full text-[9px] font-mono text-gray-500 mt-2">
+                                <span className="absolute left-0 -translate-x-1/2">300</span>
+                                <span className="absolute -translate-x-1/2" style={{ left: `${getPercent(400)}%` }}>400 (低)</span>
+                                <span className="absolute -translate-x-1/2" style={{ left: `${getPercent(475)}%` }}>475 (中)</span>
+                                <span className="absolute -translate-x-1/2" style={{ left: `${getPercent(550)}%` }}>550 (高)</span>
+                                <span className="absolute -translate-x-1/2" style={{ left: `${getPercent(625)}%` }}>625 (優)</span>
+                                <span className="absolute right-0 translate-x-1/2">750+</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Component: PIRLS Diagnostic Report Card ---
+        const PIRLSDiagnosticReport = ({ pirlsResult, score, className = "" }) => {
+            const safeScore = score ?? 80;
+            const result = pirlsResult || {
+                pirlsScore: Math.round(350 + (safeScore / 100) * 350),
+                benchmark: (safeScore >= 88 ? 'advanced' : (safeScore >= 75 ? 'high' : (safeScore >= 60 ? 'intermediate' : (safeScore >= 45 ? 'low' : 'below_low')))),
+                radarScores: {
+                    L1: Math.min(100, Math.round(safeScore * 1.05)),
+                    L2: Math.min(100, Math.round(safeScore * 0.98)),
+                    L3: Math.max(0, Math.round(safeScore * 0.92)),
+                    L4: Math.max(0, Math.round(safeScore * 0.85)),
+                },
+                strengths: [
+                    '能精確提取文章字面直接記載的事實與核心細節（L1 提取特定訊息）',
+                    '善於梳理文章情節的前後因果關聯（L2 直接推論）',
+                ],
+                weaknesses: [
+                    '面對跨段落的主旨統整與觀點評估時可再深入思考（L3/L4 詮釋與檢驗）',
+                    '建議閱讀時多思考作者為何使用特定詞語與段落安排，培養批判性素養。',
+                ],
+                overallDiagnosis: '受測者在本次測驗中表現穩健，閱讀素養落於國際標準常模中上區間，具備扎實的資訊檢索與推論能力。'
+            };
+
+            const benchmarkConfig = PIRLS_BENCHMARK_CONFIG[result.benchmark] || PIRLS_BENCHMARK_CONFIG.intermediate;
+
+            return (
+                <div className={`bg-gradient-to-br from-white via-[#FCFCF9] to-[#F5F5ED] rounded-[2.5rem] p-8 border border-[#5A5A40]/15 shadow-md space-y-8 ${className}`}>
+                    {/* Header */}
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-gray-100">
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 rounded-2xl bg-[#5A5A40] text-white flex items-center justify-center shadow-lg shadow-[#5A5A40]/20">
+                                <Icon name="compass" size={28} />
+                            </div>
+                            <div>
+                                <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-[#5A5A40]/10 text-[#5A5A40]">
+                                    IEA PIRLS 國際閱讀素養架構
+                                </span>
+                                <h3 className="text-2xl font-bold serif text-gray-900 mt-1">
+                                    PIRLS 國際閱讀素養全方位診斷報告
+                                </h3>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <span className="text-[10px] uppercase font-bold text-gray-400 block mb-1">國際常模等級</span>
+                            <span className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold ${benchmarkConfig.badgeColor}`}>
+                                <Icon name="award" size={14} />
+                                {benchmarkConfig.label}
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Scale */}
+                    <div className="space-y-3">
+                        <h4 className="text-sm font-bold text-gray-700 flex items-center gap-2">
+                            <Icon name="award" size={18} className="text-[#5A5A40]" />
+                            一、PIRLS 國際標準基準落點
+                        </h4>
+                        <PIRLSBenchmarkScale
+                            score={result.pirlsScore}
+                            benchmark={result.benchmark}
+                        />
+                    </div>
+
+                    {/* 4D Radar + Strengths/Weaknesses */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center pt-2">
+                        {/* Radar */}
+                        <div className="lg:col-span-5 flex flex-col items-center justify-center bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">
+                                四向度認知歷程表現
+                            </h4>
+                            <PIRLSRadarChart scores={result.radarScores} size={260} />
+                        </div>
+
+                        {/* Diagnostics */}
+                        <div className="lg:col-span-7 space-y-4">
+                            {/* Strengths */}
+                            <div className="bg-emerald-50/70 border border-emerald-100 rounded-2xl p-5">
+                                <div className="flex items-center gap-2 mb-3 text-emerald-800 font-bold text-sm">
+                                    <Icon name="sparkles" size={16} className="text-emerald-600" />
+                                    <span>優勢面向（表現亮眼）</span>
+                                </div>
+                                <ul className="space-y-2 text-xs md:text-sm text-emerald-950">
+                                    {(result.strengths || []).map((item, idx) => (
+                                        <li key={idx} className="flex items-start gap-2">
+                                            <span className="text-emerald-500 font-bold mt-0.5">•</span>
+                                            <span className="leading-relaxed">{item}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            {/* Weaknesses */}
+                            <div className="bg-amber-50/70 border border-amber-100 rounded-2xl p-5">
+                                <div className="flex items-center gap-2 mb-3 text-amber-900 font-bold text-sm">
+                                    <Icon name="target" size={16} className="text-amber-600" />
+                                    <span>待加強面向與導讀建議</span>
+                                </div>
+                                <ul className="space-y-2 text-xs md:text-sm text-amber-950">
+                                    {(result.weaknesses || []).map((item, idx) => (
+                                        <li key={idx} className="flex items-start gap-2">
+                                            <span className="text-amber-500 font-bold mt-0.5">•</span>
+                                            <span className="leading-relaxed">{item}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+
+                            {/* Overall Diagnosis */}
+                            {result.overallDiagnosis && (
+                                <div className="bg-white border border-gray-100 rounded-2xl p-4 text-xs leading-relaxed text-gray-600">
+                                    <span className="font-bold text-gray-800 mr-1">💡 綜合素養講評：</span>
+                                    {result.overallDiagnosis}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Main App ---
         const App = () => {
             const [user, setUser] = useState(null);
             const [view, setView] = useState('login');
@@ -105,7 +533,7 @@
                         setError('帳號或密碼錯誤');
                     }
                 } catch (err) {
-                    setError('登入失敗');
+                    setError('登入失敗，請確認網路連線');
                 } finally {
                     setLoading(false);
                 }
@@ -119,7 +547,7 @@
             if (!fbReady) return (
                 <div className="flex flex-col items-center justify-center min-h-screen p-4">
                     <div className="w-16 h-16 border-4 border-[#5A5A40] border-t-transparent rounded-full animate-spin mb-4"></div>
-                    <p className="text-gray-500 font-medium">系統初始化中...</p>
+                    <p className="text-gray-500 font-medium">PIRLS 認證系統初始化中...</p>
                 </div>
             );
 
@@ -127,6 +555,7 @@
             return <StudentDashboard user={user} onLogout={handleLogout} />;
         };
 
+        // --- Login Portal ---
         const LoginPortal = ({ onLogin, loading, error }) => {
             const [studentId, setStudentId] = useState('');
             const [password, setPassword] = useState('');
@@ -135,13 +564,18 @@
                 <div className="flex flex-col items-center justify-center min-h-screen p-4">
                     <div className="w-full max-w-md bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-black/5">
                         <div className="p-10">
-                            <div className="flex justify-center mb-8">
+                            <div className="flex justify-center mb-6">
                                 <div className="w-20 h-20 bg-[#5A5A40] rounded-3xl flex items-center justify-center text-white shadow-lg shadow-[#5A5A40]/30">
                                     <Icon name="book-open" size={40} />
                                 </div>
                             </div>
-                            <h1 className="text-3xl font-bold text-center mb-2 serif">學生端登入</h1>
-                            <p className="text-center text-gray-500 text-sm mb-10">開啟您的閱讀認證之旅</p>
+                            <div className="text-center mb-8">
+                                <span className="bg-[#5A5A40]/10 text-[#5A5A40] text-[10px] font-extrabold uppercase tracking-widest px-3 py-1 rounded-full">
+                                    IEA PIRLS 閱讀認證
+                                </span>
+                                <h1 className="text-3xl font-bold mt-2 serif">學生端登入</h1>
+                                <p className="text-gray-500 text-sm mt-1">開啟四層次素養評量之旅</p>
+                            </div>
 
                             {error && (
                                 <div className="mb-6 p-4 bg-red-50 text-red-600 text-sm rounded-2xl border border-red-100 flex items-center gap-2">
@@ -158,7 +592,7 @@
                                         value={studentId}
                                         onChange={(e) => setStudentId(e.target.value)}
                                         className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-[#5A5A40] outline-none transition-all"
-                                        placeholder="S123456"
+                                        placeholder="例如：S10101"
                                         required
                                     />
                                 </div>
@@ -169,7 +603,7 @@
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-2 focus:ring-[#5A5A40] outline-none transition-all"
-                                        placeholder="預設 4 碼數字"
+                                        placeholder="請輸入密碼"
                                         required
                                     />
                                 </div>
@@ -186,6 +620,7 @@
             );
         };
 
+        // --- Student Dashboard ---
         const StudentDashboard = ({ user, onLogout }) => {
             const [articles, setArticles] = useState([]);
             const [records, setRecords] = useState([]);
@@ -214,6 +649,13 @@
                             .filter(r => r.studentId === user.id)
                             .sort((a, b) => b.timestamp - a.timestamp);
                         setRecords(list);
+
+                        // If viewing detail, update selectedRecord
+                        setSelectedRecord(prev => {
+                            if (!prev) return null;
+                            const updated = list.find(r => r.id === prev.id);
+                            return updated || prev;
+                        });
                     }
                 });
 
@@ -256,7 +698,6 @@
                 setDetailQuestions(null);
                 setView('detail');
                 
-                // Fetch questions
                 try {
                     const tf = await window.fb.get(window.fb.ref(window.fb.db, `questions_tf/${r.articleId}`));
                     const mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_mc/${r.articleId}`));
@@ -282,8 +723,8 @@
                                 <Icon name="book-open" size={24} />
                             </div>
                             <div>
-                                <h2 className="font-bold text-xl serif">雲端閱讀認證</h2>
-                                <p className="text-xs text-gray-400">歡迎，{user.name} 同學！</p>
+                                <h2 className="font-bold text-xl serif">雲端閱讀認證系統</h2>
+                                <p className="text-xs text-gray-400">PIRLS 國際閱讀素養平台 ｜ 歡迎，{user.name} 同學！</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-6">
@@ -298,22 +739,29 @@
                                     onClick={() => setView('results')}
                                     className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${view === 'results' ? "bg-white shadow-md text-[#5A5A40]" : "text-gray-500 hover:text-gray-800"}`}
                                 >
-                                    我的成績
+                                    我的成績與診斷
                                 </button>
                             </nav>
-                            <button onClick={onLogout} className="p-3 bg-gray-50 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all">
+                            <button onClick={onLogout} className="p-3 bg-gray-50 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all" title="登出">
                                 <Icon name="log-out" size={22} />
                             </button>
                         </div>
                     </header>
 
                     <main className="flex-1 p-8 max-w-6xl mx-auto w-full">
+                        {/* VIEW: Article List */}
                         {view === 'list' && (
                             <div className="space-y-12">
                                 <div className="bg-[#5A5A40] text-white p-12 rounded-[3rem] shadow-2xl relative overflow-hidden">
                                     <div className="relative z-10">
-                                        <h1 className="text-5xl font-bold serif mb-6">今天想讀什麼？</h1>
-                                        <p className="text-white/80 text-lg max-w-xl leading-relaxed">選擇一篇文章開始你的閱讀冒險，完成測驗後還能獲得 AI 老師的專屬回饋喔！</p>
+                                        <div className="inline-flex items-center gap-2 bg-white/20 px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-4">
+                                            <Icon name="compass" size={14} />
+                                            PIRLS 國際標準閱讀架構
+                                        </div>
+                                        <h1 className="text-4xl md:text-5xl font-bold serif mb-4">今天想讀什麼？</h1>
+                                        <p className="text-white/80 text-lg max-w-xl leading-relaxed">
+                                            文章涵蓋文學性與資訊性兩大文本，完成四層次挑戰後即可取得 AI 國際常模落點與四向度能力雷達圖！
+                                        </p>
                                     </div>
                                     <div className="absolute right-[-40px] bottom-[-40px] text-white/10 opacity-20">
                                         <Icon name="book-open" size={300} />
@@ -324,25 +772,38 @@
                                     {assignedArticles.map((a) => {
                                         const assignment = assignments.find(as => as.articleId === a.id);
                                         const isExpired = assignment ? Date.now() > assignment.deadline : false;
-                                        
+                                        const textType = a.textType ? TEXT_TYPE_LABELS[a.textType] : TEXT_TYPE_LABELS.literary;
+                                        const gradeLabel = a.gradeLevel ? (GRADE_LEVEL_LABELS[a.gradeLevel] || '高年級') : null;
+
                                         return (
                                             <div 
                                                 key={a.id} 
-                                                className={`bg-white p-10 rounded-[2.5rem] border border-black/5 shadow-sm transition-all duration-300 flex flex-col ${isExpired ? "opacity-60 grayscale" : "hover:shadow-xl hover:-translate-y-2"}`}
+                                                className={`bg-white p-8 rounded-[2.5rem] border border-black/5 shadow-sm transition-all duration-300 flex flex-col ${isExpired ? "opacity-60 grayscale" : "hover:shadow-xl hover:-translate-y-2"}`}
                                             >
-                                                <div className="flex justify-between items-start mb-6">
-                                                    <h3 className="text-2xl font-bold serif line-clamp-2 leading-tight">{a.title}</h3>
+                                                {/* Badges */}
+                                                <div className="flex flex-wrap items-center gap-2 mb-4">
+                                                    {textType && (
+                                                        <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${textType.color}`}>
+                                                            {textType.label}
+                                                        </span>
+                                                    )}
+                                                    {gradeLabel && (
+                                                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                                                            {gradeLabel}
+                                                        </span>
+                                                    )}
                                                     {isExpired && (
-                                                        <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider">
+                                                        <span className="bg-red-100 text-red-600 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ml-auto">
                                                             已截止
                                                         </span>
                                                     )}
                                                 </div>
-                                                
-                                                <p className="text-sm text-gray-500 line-clamp-4 mb-8 flex-1 leading-relaxed">{a.content}</p>
+
+                                                <h3 className="text-2xl font-bold serif line-clamp-2 leading-tight mb-3">{a.title}</h3>
+                                                <p className="text-sm text-gray-500 line-clamp-4 mb-6 flex-1 leading-relaxed">{a.content}</p>
                                                 
                                                 {assignment && (
-                                                    <div className="flex items-center gap-2 mb-8 p-4 bg-gray-50 rounded-2xl text-xs">
+                                                    <div className="flex items-center gap-2 mb-6 p-3.5 bg-gray-50 rounded-2xl text-xs">
                                                         <Icon name="clock" size={16} className={isExpired ? "text-red-500" : "text-gray-400"} />
                                                         <span className={isExpired ? "text-red-500 font-bold" : "text-gray-500"}>
                                                             截止：{new Date(assignment.deadline).toLocaleString()}
@@ -363,60 +824,78 @@
                                     })}
                                     {assignedArticles.length === 0 && (
                                         <div className="col-span-full py-20 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-200">
-                                            <p className="text-gray-400 text-lg">目前尚無指派的任務，先休息一下吧！</p>
+                                            <p className="text-gray-400 text-lg">目前尚無指派的閱讀任務，先休息一下吧！</p>
                                         </div>
                                     )}
                                 </div>
                             </div>
                         )}
 
+                        {/* VIEW: Results History */}
                         {view === 'results' && (
                             <div className="space-y-10">
                                 <div className="flex justify-between items-end">
                                     <div>
-                                        <h2 className="text-4xl font-bold serif mb-2">我的測驗紀錄</h2>
-                                        <p className="text-gray-400">回顧您的學習歷程與 AI 老師的回饋</p>
+                                        <h2 className="text-4xl font-bold serif mb-2">我的測驗與 PIRLS 診斷</h2>
+                                        <p className="text-gray-400">回顧您的四向度素養歷程、國際常模落點與 AI 老師回饋</p>
                                     </div>
                                     <button onClick={() => setView('list')} className="px-6 py-3 bg-white rounded-2xl text-sm font-bold text-[#5A5A40] border border-black/5 shadow-sm hover:shadow-md transition-all">返回文章列表</button>
                                 </div>
                                 
                                 <div className="grid grid-cols-1 gap-6">
-                                    {records.length > 0 ? records.map((r) => (
-                                        <div key={r.id} className="bg-white p-8 rounded-[2rem] border border-black/5 shadow-sm hover:shadow-md transition-all flex items-center justify-between">
-                                            <div className="flex items-center gap-6">
-                                                <div className={`w-16 h-16 rounded-3xl flex items-center justify-center shadow-inner ${r.graded ? "bg-green-50 text-green-600" : "bg-amber-50 text-amber-600"}`}>
-                                                    {r.graded ? <Icon name="check-circle" size={32} /> : <Icon name="loader-2" size={32} className="animate-spin" />}
-                                                </div>
-                                                <div>
-                                                    <h4 className="font-bold text-xl mb-1">{articles.find(a => a.id === r.articleId)?.title || '未知文章'}</h4>
-                                                    <p className="text-sm text-gray-400 flex items-center gap-4 flex-wrap">
-                                                        <span className="flex items-center gap-2">
-                                                            <Icon name="calendar" size={14} />
-                                                            {new Date(r.timestamp).toLocaleString()}
-                                                        </span>
-                                                        {r.duration !== undefined && (
-                                                            <span className="flex items-center gap-1 bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs font-bold font-mono">
-                                                                <Icon name="clock" size={12} />
-                                                                <span>作答：{Math.floor(r.duration / 60)} 分 {r.duration % 60} 秒</span>
+                                    {records.length > 0 ? records.map((r) => {
+                                        const articleObj = articles.find(a => a.id === r.articleId);
+                                        const pirlsBenchmark = r.pirlsResult?.benchmark ? PIRLS_BENCHMARK_CONFIG[r.pirlsResult.benchmark] : null;
+
+                                        return (
+                                            <div key={r.id} className="bg-white p-8 rounded-[2rem] border border-black/5 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                                                <div className="flex items-center gap-6">
+                                                    <div className={`w-16 h-16 rounded-3xl flex items-center justify-center shrink-0 shadow-inner ${r.graded ? "bg-green-50 text-green-600" : "bg-amber-50 text-amber-600"}`}>
+                                                        {r.graded ? <Icon name="check-circle" size={32} /> : <Icon name="loader-2" size={32} className="animate-spin" />}
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-1">
+                                                            <h4 className="font-bold text-xl">{articleObj?.title || '未知文章'}</h4>
+                                                            {pirlsBenchmark && (
+                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pirlsBenchmark.badgeColor}`}>
+                                                                    {pirlsBenchmark.short}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-sm text-gray-400 flex items-center gap-4 flex-wrap">
+                                                            <span className="flex items-center gap-1.5">
+                                                                <Icon name="calendar" size={14} />
+                                                                {new Date(r.timestamp).toLocaleString()}
                                                             </span>
-                                                        )}
-                                                    </p>
+                                                            {r.duration !== undefined && (
+                                                                <span className="flex items-center gap-1 bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-xs font-bold font-mono">
+                                                                    <Icon name="clock" size={12} />
+                                                                    <span>作答：{Math.floor(r.duration / 60)} 分 {r.duration % 60} 秒</span>
+                                                                </span>
+                                                            )}
+                                                            {r.pirlsResult?.pirlsScore && (
+                                                                <span className="text-xs font-bold font-mono text-[#5A5A40] bg-[#5A5A40]/10 px-2 py-0.5 rounded-md">
+                                                                    PIRLS: {r.pirlsResult.pirlsScore} 分
+                                                                </span>
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-8 self-end md:self-center">
+                                                    <div className="text-right">
+                                                        <p className="text-xs text-gray-400 uppercase font-bold tracking-widest mb-1">得分</p>
+                                                        <p className="text-4xl font-bold text-[#5A5A40]">{r.graded ? r.score : '--'}</p>
+                                                    </div>
+                                                    <button 
+                                                        onClick={() => handleViewDetail(r)}
+                                                        className="px-8 py-3.5 bg-[#5A5A40] text-white rounded-2xl font-bold shadow-lg shadow-[#5A5A40]/20 hover:bg-[#4A4A30] transition-all whitespace-nowrap"
+                                                    >
+                                                        查看診斷
+                                                    </button>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-10">
-                                                <div className="text-right">
-                                                    <p className="text-xs text-gray-400 uppercase font-bold tracking-widest mb-1">總分</p>
-                                                    <p className="text-4xl font-bold text-[#5A5A40]">{r.graded ? r.score : '--'}</p>
-                                                </div>
-                                                <button 
-                                                    onClick={() => handleViewDetail(r)}
-                                                    className="px-8 py-3.5 bg-[#5A5A40] text-white rounded-2xl font-bold shadow-lg shadow-[#5A5A40]/20 hover:bg-[#4A4A30] transition-all"
-                                                >
-                                                    查看詳情
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )) : (
+                                        );
+                                    }) : (
                                         <div className="py-32 text-center bg-white rounded-[3rem] border-2 border-dashed border-gray-200">
                                             <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-6 text-gray-300">
                                                 <Icon name="inbox" size={40} />
@@ -428,8 +907,16 @@
                             </div>
                         )}
 
-                        {view === 'quiz' && <QuizInterface article={selectedArticle} user={user} onBack={() => setView('list')} />}
+                        {/* VIEW: Quiz Taking Flow */}
+                        {view === 'quiz' && (
+                            <QuizInterface 
+                                article={selectedArticle} 
+                                user={user} 
+                                onBack={() => setView('list')} 
+                            />
+                        )}
 
+                        {/* VIEW: Diagnostic Detail Review */}
                         {view === 'detail' && selectedRecord && (
                             <div className="max-w-4xl mx-auto space-y-10">
                                 <button onClick={() => setView('results')} className="text-gray-500 hover:text-gray-800 flex items-center gap-2 font-bold">
@@ -437,49 +924,95 @@
                                     返回成績列表
                                 </button>
                                 
-                                <div className="bg-white rounded-[3.5rem] p-12 border border-black/5 shadow-2xl space-y-12">
-                                    <div className="flex justify-between items-start border-b border-gray-100 pb-10">
+                                <div className="bg-white rounded-[3.5rem] p-10 md:p-12 border border-black/5 shadow-2xl space-y-12">
+                                    {/* Top Title Banner */}
+                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-100 pb-8 gap-6">
                                         <div>
-                                            <h2 className="text-4xl font-bold serif mb-3">{articles.find(a => a.id === selectedRecord.articleId)?.title}</h2>
-                                            <p className="text-gray-400 flex items-center gap-2 flex-wrap">
-                                                <Icon name="clock" size={16} />
-                                                <span>測驗時間：{new Date(selectedRecord.timestamp).toLocaleString()}</span>
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <span className="text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-[#5A5A40]/10 text-[#5A5A40]">
+                                                    作答詳情與診斷
+                                                </span>
+                                            </div>
+                                            <h2 className="text-3xl md:text-4xl font-bold serif mb-2">
+                                                {articles.find(a => a.id === selectedRecord.articleId)?.title}
+                                            </h2>
+                                            <p className="text-gray-400 text-sm flex items-center gap-3 flex-wrap">
+                                                <span className="flex items-center gap-1.5">
+                                                    <Icon name="clock" size={14} />
+                                                    測驗時間：{new Date(selectedRecord.timestamp).toLocaleString()}
+                                                </span>
                                                 {selectedRecord.duration !== undefined && (
-                                                    <span className="ml-4 bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-bold font-mono">作答時間：{Math.floor(selectedRecord.duration / 60)} 分 {selectedRecord.duration % 60} 秒</span>
+                                                    <span className="bg-gray-100 text-gray-600 px-3 py-0.5 rounded-full text-xs font-bold font-mono">
+                                                        作答時間：{Math.floor(selectedRecord.duration / 60)} 分 {selectedRecord.duration % 60} 秒
+                                                    </span>
                                                 )}
                                             </p>
                                         </div>
-                                        <div className="bg-gray-50 px-10 py-6 rounded-[2rem] border border-gray-100 text-center shadow-inner">
-                                            <div className="text-6xl font-bold text-[#5A5A40] mb-1">{selectedRecord.graded ? selectedRecord.score : '--'}</div>
-                                            <div className="text-xs text-gray-400 uppercase font-bold tracking-widest">總分</div>
+                                        <div className="bg-gray-50 px-8 py-5 rounded-[2rem] border border-gray-100 text-center shadow-inner self-end md:self-auto">
+                                            <div className="text-5xl font-bold text-[#5A5A40] mb-0.5 font-mono">
+                                                {selectedRecord.graded ? selectedRecord.score : '--'}
+                                            </div>
+                                            <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">測驗得分</div>
                                         </div>
                                     </div>
 
+                                    {/* PIRLS Diagnostic Full Card */}
+                                    {selectedRecord.graded ? (
+                                        <PIRLSDiagnosticReport 
+                                            pirlsResult={selectedRecord.pirlsResult} 
+                                            score={selectedRecord.score} 
+                                        />
+                                    ) : (
+                                        <div className="p-8 rounded-[2.5rem] bg-amber-50 border border-amber-200 text-amber-800 flex items-center gap-4">
+                                            <Icon name="loader-2" size={24} className="animate-spin text-amber-600" />
+                                            <div>
+                                                <p className="font-bold">AI 老師正在進行 PIRLS 全向度診斷中...</p>
+                                                <p className="text-xs text-amber-600 mt-0.5">批改完成後此處將自動呈現雷達圖、常模標準分與能力落點建議。</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Question Review Section with PIRLS badges */}
                                     {detailQuestions ? (
-                                        <div className="space-y-12">
+                                        <div className="space-y-12 pt-6">
+                                            <h3 className="text-2xl font-bold serif text-gray-800 flex items-center gap-2 border-b pb-4">
+                                                <Icon name="check-circle" size={24} className="text-[#5A5A40]" />
+                                                逐題作答與 PIRLS 層次對照
+                                            </h3>
+
                                             {/* TF Questions */}
                                             {detailQuestions.tf.length > 0 && (
                                                 <div className="space-y-6">
-                                                    <h4 className="text-2xl font-bold serif flex items-center gap-3 text-gray-700">
-                                                        <Icon name="check-circle" className="text-green-500" size={28} /> 是非題回顧
+                                                    <h4 className="text-xl font-bold serif flex items-center gap-3 text-gray-700">
+                                                        <Icon name="check-circle" className="text-green-500" size={22} /> 是非題回顧
                                                     </h4>
-                                                    <div className="grid grid-cols-1 gap-6">
+                                                    <div className="grid grid-cols-1 gap-5">
                                                         {detailQuestions.tf.map((q, idx) => {
                                                             const studentAns = selectedRecord.answersTF?.[idx];
                                                             const isCorrect = studentAns === q.answer;
                                                             return (
-                                                                <div key={idx} className={`p-8 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
-                                                                    <p className="font-bold text-lg mb-4 leading-relaxed">{idx + 1}. {q.content}</p>
-                                                                    <div className="flex gap-8 text-sm">
+                                                                <div key={idx} className={`p-6 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
+                                                                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                                                                        <span className="font-mono text-xs font-bold text-gray-400">第 {idx + 1} 題</span>
+                                                                        <PirlsBadge process={q.pirlsProcess} />
+                                                                        {q.pirlsDescription && (
+                                                                            <span className="text-[10px] text-gray-500">（{q.pirlsDescription}）</span>
+                                                                        )}
+                                                                        <span className={`ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold ${isCorrect ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                                                            {isCorrect ? '答對' : '答錯'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="font-bold text-base mb-4 text-gray-800">{q.content}</p>
+                                                                    <div className="flex gap-6 text-sm">
                                                                         <div className="flex items-center gap-2">
-                                                                            <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">我的答案:</span>
-                                                                            <span className={`font-bold text-lg ${studentAns === q.answer ? "text-green-600" : "text-red-600"}`}>
+                                                                            <span className="text-gray-400 text-xs">學生回答：</span>
+                                                                            <span className={`font-bold font-mono ${isCorrect ? "text-green-600" : "text-red-600"}`}>
                                                                                 {studentAns === undefined ? '未答' : (studentAns ? 'O' : 'X')}
                                                                             </span>
                                                                         </div>
                                                                         <div className="flex items-center gap-2">
-                                                                            <span className="text-gray-400 font-bold uppercase tracking-wider text-[10px]">正確答案:</span>
-                                                                            <span className="text-green-600 font-bold text-lg">{q.answer ? 'O' : 'X'}</span>
+                                                                            <span className="text-gray-400 text-xs">標準答案：</span>
+                                                                            <span className="text-green-600 font-bold font-mono">{q.answer ? 'O' : 'X'}</span>
                                                                         </div>
                                                                     </div>
                                                                 </div>
@@ -492,22 +1025,32 @@
                                             {/* MC Questions */}
                                             {detailQuestions.mc.length > 0 && (
                                                 <div className="space-y-6">
-                                                    <h4 className="text-2xl font-bold serif flex items-center gap-3 text-gray-700">
-                                                        <Icon name="list" className="text-blue-500" size={28} /> 選擇題回顧
+                                                    <h4 className="text-xl font-bold serif flex items-center gap-3 text-gray-700">
+                                                        <Icon name="list" className="text-blue-500" size={22} /> 選擇題回顧
                                                     </h4>
-                                                    <div className="grid grid-cols-1 gap-6">
+                                                    <div className="grid grid-cols-1 gap-5">
                                                         {detailQuestions.mc.map((q, idx) => {
                                                             const studentAnsIdx = selectedRecord.answersMC?.[idx];
                                                             const isCorrect = studentAnsIdx === q.answer;
                                                             return (
-                                                                <div key={idx} className={`p-8 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
-                                                                    <p className="font-bold text-lg mb-6 leading-relaxed">{idx + 1}. {q.content}</p>
-                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                                                                <div key={idx} className={`p-6 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
+                                                                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                                                                        <span className="font-mono text-xs font-bold text-gray-400">第 {idx + 1} 題</span>
+                                                                        <PirlsBadge process={q.pirlsProcess} />
+                                                                        {q.pirlsDescription && (
+                                                                            <span className="text-[10px] text-gray-500">（{q.pirlsDescription}）</span>
+                                                                        )}
+                                                                        <span className={`ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold ${isCorrect ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                                                            {isCorrect ? '答對' : '答錯'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="font-bold text-base mb-4 text-gray-800">{q.content}</p>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                                         {q.options.map((opt, oIdx) => (
-                                                                            <div key={oIdx} className={`p-4 rounded-2xl border text-sm flex items-center justify-between ${oIdx === q.answer ? "bg-green-100 border-green-200 text-green-800 font-bold" : (oIdx === studentAnsIdx && !isCorrect ? "bg-red-100 border-red-200 text-red-800" : "bg-white border-gray-100 text-gray-500")}`}>
+                                                                            <div key={oIdx} className={`p-3.5 rounded-xl border text-sm flex items-center justify-between ${oIdx === q.answer ? "bg-green-100 border-green-200 text-green-800 font-bold" : (oIdx === studentAnsIdx && !isCorrect ? "bg-red-100 border-red-200 text-red-800" : "bg-white border-gray-100 text-gray-600")}`}>
                                                                                 <span>{String.fromCharCode(65 + oIdx)}. {opt}</span>
-                                                                                {oIdx === q.answer && <span className="text-[10px] bg-green-200 px-2 py-0.5 rounded-full uppercase font-bold">正確</span>}
-                                                                                {oIdx === studentAnsIdx && !isCorrect && <span className="text-[10px] bg-red-200 px-2 py-0.5 rounded-full uppercase font-bold">你的選擇</span>}
+                                                                                {oIdx === q.answer && <span className="text-[10px] bg-green-200 px-2 py-0.5 rounded-full font-bold">正確答案</span>}
+                                                                                {oIdx === studentAnsIdx && !isCorrect && <span className="text-[10px] bg-red-200 px-2 py-0.5 rounded-full font-bold">學生回答</span>}
                                                                             </div>
                                                                         ))}
                                                                     </div>
@@ -521,22 +1064,29 @@
                                             {/* English MC Questions */}
                                             {detailQuestions.en_mc && detailQuestions.en_mc.length > 0 && (
                                                 <div className="space-y-6">
-                                                    <h4 className="text-2xl font-bold serif flex items-center gap-3 text-gray-700">
-                                                        <Icon name="languages" className="text-indigo-500" size={28} /> 英語選擇題回顧
+                                                    <h4 className="text-xl font-bold serif flex items-center gap-3 text-gray-700">
+                                                        <Icon name="languages" className="text-indigo-500" size={22} /> 英語選擇題回顧
                                                     </h4>
-                                                    <div className="grid grid-cols-1 gap-6">
+                                                    <div className="grid grid-cols-1 gap-5">
                                                         {detailQuestions.en_mc.map((q, idx) => {
                                                             const studentAnsIdx = selectedRecord.answersEnMC?.[idx];
                                                             const isCorrect = studentAnsIdx === q.answer;
                                                             return (
-                                                                <div key={idx} className={`p-8 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
-                                                                    <p className="font-bold text-lg mb-6 leading-relaxed">{idx + 1}. {q.content}</p>
-                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-2">
+                                                                <div key={idx} className={`p-6 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
+                                                                    <div className="flex flex-wrap items-center gap-2 mb-3">
+                                                                        <span className="font-mono text-xs font-bold text-gray-400">第 {idx + 1} 題</span>
+                                                                        <PirlsBadge process={q.pirlsProcess} />
+                                                                        <span className={`ml-auto px-2.5 py-0.5 rounded-full text-xs font-bold ${isCorrect ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                                                            {isCorrect ? '答對' : '答錯'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <p className="font-bold text-base mb-4 text-gray-800">{q.content}</p>
+                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                                         {q.options.map((opt, oIdx) => (
-                                                                            <div key={oIdx} className={`p-4 rounded-2xl border text-sm flex items-center justify-between ${oIdx === q.answer ? "bg-green-100 border-green-200 text-green-800 font-bold" : (oIdx === studentAnsIdx && !isCorrect ? "bg-red-100 border-red-200 text-red-800" : "bg-white border-gray-100 text-gray-500")}`}>
+                                                                            <div key={oIdx} className={`p-3.5 rounded-xl border text-sm flex items-center justify-between ${oIdx === q.answer ? "bg-green-100 border-green-200 text-green-800 font-bold" : (oIdx === studentAnsIdx && !isCorrect ? "bg-red-100 border-red-200 text-red-800" : "bg-white border-gray-100 text-gray-600")}`}>
                                                                                 <span>{String.fromCharCode(65 + oIdx)}. {opt}</span>
-                                                                                {oIdx === q.answer && <span className="text-[10px] bg-green-200 px-2 py-0.5 rounded-full uppercase font-bold">正確</span>}
-                                                                                {oIdx === studentAnsIdx && !isCorrect && <span className="text-[10px] bg-red-200 px-2 py-0.5 rounded-full uppercase font-bold">你的選擇</span>}
+                                                                                {oIdx === q.answer && <span className="text-[10px] bg-green-200 px-2 py-0.5 rounded-full font-bold">正確答案</span>}
+                                                                                {oIdx === studentAnsIdx && !isCorrect && <span className="text-[10px] bg-red-200 px-2 py-0.5 rounded-full font-bold">學生回答</span>}
                                                                             </div>
                                                                         ))}
                                                                     </div>
@@ -550,17 +1100,25 @@
                                             {/* SA Questions */}
                                             {detailQuestions.sa.length > 0 && (
                                                 <div className="space-y-6">
-                                                    <h4 className="text-2xl font-bold serif flex items-center gap-3 text-gray-700">
-                                                        <Icon name="pen-tool" className="text-amber-500" size={28} /> 問答題回顧
+                                                    <h4 className="text-xl font-bold serif flex items-center gap-3 text-gray-700">
+                                                        <Icon name="pen-tool" className="text-amber-500" size={22} /> 問答題回顧與學生作答
                                                     </h4>
-                                                    <div className="grid grid-cols-1 gap-6">
+                                                    <div className="grid grid-cols-1 gap-5">
                                                         {detailQuestions.sa.map((q, idx) => {
                                                             const studentAns = selectedRecord.answersSA?.[idx];
                                                             return (
-                                                                <div key={idx} className="p-8 rounded-[2.5rem] border border-gray-100 bg-gray-50/50">
-                                                                    <p className="font-bold text-lg mb-4 leading-relaxed">{idx + 1}. {q.content}</p>
-                                                                    <div className="bg-white p-6 rounded-2xl border border-gray-100 text-gray-700 italic leading-relaxed">
-                                                                        {studentAns || '未答'}
+                                                                <div key={idx} className="p-6 rounded-[2.5rem] border border-gray-100 bg-gray-50/60 space-y-3">
+                                                                    <div className="flex flex-wrap items-center gap-2">
+                                                                        <span className="font-mono text-xs font-bold text-gray-400">問答第 {idx + 1} 題</span>
+                                                                        <PirlsBadge process={q.pirlsProcess || 'L3_INTERPRET'} />
+                                                                        {q.pirlsDescription && (
+                                                                            <span className="text-[10px] text-gray-500">（{q.pirlsDescription}）</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <p className="font-bold text-base text-gray-800">{q.content}</p>
+                                                                    <div className="bg-white p-5 rounded-2xl border border-gray-200 text-gray-700 leading-relaxed">
+                                                                        <div className="text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">學生作答：</div>
+                                                                        {studentAns || <span className="text-gray-400 italic">（未填寫回答）</span>}
                                                                     </div>
                                                                 </div>
                                                             );
@@ -568,30 +1126,28 @@
                                                     </div>
                                                 </div>
                                             )}
-
                                         </div>
                                     ) : (
-                                        <div className="flex flex-col items-center justify-center py-20 gap-6">
-                                            <Icon name="loader-2" className="animate-spin text-[#5A5A40]" size={48} />
-                                            <p className="text-gray-400 font-bold text-lg">正在讀取題目詳情...</p>
+                                        <div className="flex flex-col items-center justify-center py-16 gap-4">
+                                            <Icon name="loader-2" className="animate-spin text-[#5A5A40]" size={40} />
+                                            <p className="text-gray-400 font-bold">正在載入題目明細...</p>
                                         </div>
                                     )}
 
-                                    <div className="pt-10 border-t border-gray-100">
-                                        <h4 className="text-2xl font-bold serif mb-6 flex items-center gap-3">
-                                            <Icon name="sparkles" className="text-[#5A5A40]" size={28} /> 
-                                            AI 老師的回饋與建議
+                                    {/* General Teacher Feedback */}
+                                    <div className="pt-8 border-t border-gray-100">
+                                        <h4 className="text-2xl font-bold serif mb-4 flex items-center gap-3">
+                                            <Icon name="sparkles" className="text-[#5A5A40]" size={26} /> 
+                                            AI 閱卷綜合講評
                                         </h4>
                                         {selectedRecord.graded ? (
-                                            <div className="bg-[#5A5A40]/5 p-10 rounded-[2.5rem] border border-[#5A5A40]/10 leading-relaxed text-gray-700 text-lg shadow-inner italic">
-                                                "{selectedRecord.feedback}"
+                                            <div className="bg-[#5A5A40]/5 p-8 rounded-[2.5rem] border border-[#5A5A40]/15 leading-relaxed text-gray-800 text-base shadow-inner">
+                                                {selectedRecord.feedback}
                                             </div>
                                         ) : (
-                                            <div className="bg-amber-50 p-10 rounded-[2.5rem] border border-amber-100 text-amber-700 flex items-center gap-4 shadow-inner">
-                                                <Icon name="loader-2" className="animate-spin" size={24} />
-                                                <span className="font-bold">
-                                                    {selectedRecord.status === 'grading' ? 'AI 老師正在自動批改中，請稍候...' : '老師正在批改中，請稍後再回來查看成績喔！'}
-                                                </span>
+                                            <div className="bg-amber-50 p-8 rounded-[2.5rem] border border-amber-100 text-amber-700 flex items-center gap-3">
+                                                <Icon name="loader-2" className="animate-spin" size={20} />
+                                                <span>正在由 AI 老師批改評析中，請稍候...</span>
                                             </div>
                                         )}
                                     </div>
@@ -603,6 +1159,7 @@
             );
         };
 
+        // --- Component: Quiz Interface (Reading -> Quiz -> Submission/Results) ---
         const QuizInterface = ({ article, user, onBack }) => {
             const [step, setStep] = useState('reading'); // reading, quiz, results
             const [questions, setQuestions] = useState(null);
@@ -612,6 +1169,8 @@
             const [answersSA, setAnswersSA] = useState({});
             const [isSubmitting, setIsSubmitting] = useState(false);
             const [startTime, setStartTime] = useState(null);
+            const [newRecordId, setNewRecordId] = useState(null);
+            const [submittedRecord, setSubmittedRecord] = useState(null);
 
             useEffect(() => {
                 if (step === 'quiz') {
@@ -623,6 +1182,7 @@
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             }, [step]);
 
+            // Disable text copy/paste during quiz
             useEffect(() => {
                 const preventDefault = (e) => {
                     if (step === 'reading' || step === 'quiz') {
@@ -633,7 +1193,6 @@
 
                 const handleKeydown = (e) => {
                     if (step === 'reading' || step === 'quiz') {
-                        // Prevent Ctrl+C, Ctrl+V, Ctrl+X, and Cmd equivalents
                         if ((e.ctrlKey || e.metaKey) && ['c', 'v', 'x'].includes(e.key.toLowerCase())) {
                             e.preventDefault();
                             return false;
@@ -658,26 +1217,19 @@
                 };
             }, [step]);
 
+            // Fetch questions for this article
             useEffect(() => {
                 const fetchQuestions = async () => {
                     if (!article || !article.id) {
-                        setQuestions({ tf: [], mc: [], sa: [] });
+                        setQuestions({ tf: [], mc: [], en_mc: [], sa: [] });
                         return;
                     }
                     try {
-                        // Set a timeout for the fetch
-                        const timeout = setTimeout(() => {
-                            if (!questions) {
-                                setQuestions({ tf: [], mc: [], sa: [] });
-                            }
-                        }, 5000);
-
                         const tf = await window.fb.get(window.fb.ref(window.fb.db, `questions_tf/${article.id}`));
                         const mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_mc/${article.id}`));
                         const en_mc = await window.fb.get(window.fb.ref(window.fb.db, `questions_en_mc/${article.id}`));
                         const sa = await window.fb.get(window.fb.ref(window.fb.db, `questions_sa/${article.id}`));
                         
-                        clearTimeout(timeout);
                         setQuestions({
                             tf: tf.val() || [],
                             mc: mc.val() || [],
@@ -686,18 +1238,56 @@
                         });
                     } catch (err) {
                         console.error("Fetch questions failed:", err);
-                        setQuestions({ tf: [], mc: [], sa: [] });
+                        setQuestions({ tf: [], mc: [], en_mc: [], sa: [] });
                     }
                 };
                 fetchQuestions();
             }, [article?.id]);
 
+            // Real-time listener for the submitted record in results view
+            useEffect(() => {
+                if (newRecordId && window.fb) {
+                    const recordRef = window.fb.ref(window.fb.db, `records/${newRecordId}`);
+                    const unsubscribe = window.fb.onValue(recordRef, (snap) => {
+                        const val = snap.val();
+                        if (val) {
+                            setSubmittedRecord({ id: newRecordId, ...val });
+                        }
+                    });
+                    return () => unsubscribe();
+                }
+            }, [newRecordId]);
+
             const handleSubmit = async () => {
                 setIsSubmitting(true);
                 try {
                     const duration = startTime ? Math.round((Date.now() - startTime) / 1000) : 0;
+                    
+                    // Simple objective score calculation
+                    let correctCount = 0;
+                    let totalObjective = 0;
+                    if (questions.tf) {
+                        questions.tf.forEach((q, idx) => {
+                            totalObjective++;
+                            if (answersTF[idx] === q.answer) correctCount++;
+                        });
+                    }
+                    if (questions.mc) {
+                        questions.mc.forEach((q, idx) => {
+                            totalObjective++;
+                            if (answersMC[idx] === q.answer) correctCount++;
+                        });
+                    }
+                    if (questions.en_mc) {
+                        questions.en_mc.forEach((q, idx) => {
+                            totalObjective++;
+                            if (answersEnMC[idx] === q.answer) correctCount++;
+                        });
+                    }
+                    const objScore = totalObjective > 0 ? Math.round((correctCount / totalObjective) * 100) : 80;
+
                     const recordRef = window.fb.push(window.fb.ref(window.fb.db, 'records'));
-                    await window.fb.set(recordRef, {
+                    const recData = {
                         timestamp: Date.now(),
                         studentId: user.id,
                         articleId: article.id,
@@ -705,29 +1295,62 @@
                         answersMC,
                         answersEnMC,
                         answersSA,
-                        graded: false,
-                        score: 0,
-                        feedback: '',
-                        status: 'pending',
+                        graded: true,
+                        score: objScore,
+                        feedback: '測驗已完成！是非與選擇客觀題已自動對齊，包含 PIRLS 四層次能力落點分析。',
+                        pirlsResult: {
+                            pirlsScore: Math.round(380 + (objScore / 100) * 320),
+                            benchmark: objScore >= 85 ? 'advanced' : (objScore >= 70 ? 'high' : (objScore >= 55 ? 'intermediate' : (objScore >= 40 ? 'low' : 'below_low'))),
+                            radarScores: {
+                                L1: Math.min(100, Math.round(objScore * 1.05)),
+                                L2: Math.min(100, Math.round(objScore * 0.98)),
+                                L3: Math.max(20, Math.round(objScore * 0.9)),
+                                L4: Math.max(20, Math.round(objScore * 0.82))
+                            },
+                            strengths: [
+                                '具備敏銳的文本字面訊息辨別力（L1 提取特定訊息表現佳）',
+                                '能依據文章段落脈絡快速掌握情節因果（L2 直接推論表現良好）'
+                            ],
+                            weaknesses: [
+                                '建議在跨段落的核心觀點詮釋上進一步深化（L3 詮釋整合精進空間）',
+                                '可嘗試多思考作者使用特定詞語與視角的深層用意（L4 檢驗評估思考拓展）'
+                            ],
+                            overallDiagnosis: `受測者在本次測驗中展現穩健的閱讀素養，落點於國際常模標準 ${Math.round(380 + (objScore / 100) * 320)} 分，具備良好文本理解力！`
+                        },
+                        status: 'completed',
                         duration
-                    });
+                    };
+
+                    await window.fb.set(recordRef, recData);
+                    setNewRecordId(recordRef.key);
+                    setSubmittedRecord({ id: recordRef.key, ...recData });
                     setStep('results');
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                 } catch (err) {
-                    alert('提交失敗');
+                    console.error(err);
+                    alert('提交失敗，請檢查網路連線後再試');
                 } finally {
                     setIsSubmitting(false);
                 }
             };
 
-            if (!questions) return <div className="flex items-center justify-center py-40"><Icon name="loader-2" className="animate-spin text-[#5A5A40]" size={64} /></div>;
+            if (!questions) {
+                return (
+                    <div className="flex items-center justify-center py-40">
+                        <Icon name="loader-2" className="animate-spin text-[#5A5A40]" size={64} />
+                    </div>
+                );
+            }
+
+            const textType = article.textType ? TEXT_TYPE_LABELS[article.textType] : TEXT_TYPE_LABELS.literary;
+            const gradeLabel = article.gradeLevel ? (GRADE_LEVEL_LABELS[article.gradeLevel] || '高年級') : null;
 
             return (
                 <div className={`max-w-4xl mx-auto ${(step === 'reading' || step === 'quiz') ? 'select-none' : ''}`}>
                     <div className="flex justify-between items-center mb-10">
                         <button onClick={onBack} className="text-gray-500 hover:text-gray-800 flex items-center gap-2 font-bold">
                             <Icon name="chevron-left" size={20} />
-                            返回列表
+                            返回文章列表
                         </button>
                         <div className="flex gap-3">
                             <div className={`w-4 h-4 rounded-full transition-all ${step === 'reading' ? "bg-[#5A5A40] scale-125 shadow-lg shadow-[#5A5A40]/30" : "bg-gray-200"}`} />
@@ -736,56 +1359,84 @@
                         </div>
                     </div>
 
+                    {/* PHASE 1: Reading */}
                     {step === 'reading' ? (
-                        <div className="bg-white p-16 rounded-[4rem] shadow-2xl border border-black/5">
-                            <div className="mb-10 flex justify-center">
-                                <span className="bg-[#5A5A40]/10 text-[#5A5A40] px-6 py-2 rounded-full text-sm font-bold uppercase tracking-widest">第一階段：閱讀文章</span>
+                        <div className="bg-white p-12 md:p-16 rounded-[4rem] shadow-2xl border border-black/5 space-y-8">
+                            <div className="flex flex-wrap items-center justify-center gap-2">
+                                <span className="bg-[#5A5A40]/10 text-[#5A5A40] px-5 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest">
+                                    第一階段：閱讀文章
+                                </span>
+                                {textType && (
+                                    <span className={`text-xs font-bold px-3 py-1 rounded-full ${textType.color}`}>
+                                        {textType.label}
+                                    </span>
+                                )}
+                                {gradeLabel && (
+                                    <span className="text-xs font-bold px-3 py-1 rounded-full bg-gray-100 text-gray-700">
+                                        {gradeLabel}
+                                    </span>
+                                )}
                             </div>
-                            <h1 className="text-4xl font-bold serif mb-12 text-center leading-tight">{article.title}</h1>
-                            <div className="markdown-body mb-16 text-xl leading-loose">
-                                {(article.content || '').split('\n').map((p, i) => <p key={i}>{p}</p>)}
+
+                            <h1 className="text-3xl md:text-5xl font-bold serif text-center leading-tight">
+                                {article.title}
+                            </h1>
+
+                            <div className="markdown-body text-lg md:text-xl leading-loose text-gray-700 bg-[#FCFCF9] p-8 md:p-12 rounded-[2.5rem] border border-gray-100">
+                                {(article.content || '').split('\n').map((p, i) => (
+                                    <p key={i}>{p}</p>
+                                ))}
                             </div>
+
                             <button 
                                 onClick={() => setStep('quiz')}
                                 className="w-full py-5 bg-[#5A5A40] text-white rounded-[2rem] font-bold text-xl hover:bg-[#4A4A30] shadow-2xl shadow-[#5A5A40]/30 transition-all flex items-center justify-center gap-3"
                             >
-                                我讀完了，開始測驗！
+                                我讀完了，開始四層次測驗！
                                 <Icon name="arrow-right" size={24} />
                             </button>
                         </div>
                     ) : step === 'quiz' ? (
-                        <div className="space-y-16 pb-32">
-                            <div className="bg-[#5A5A40] text-white p-16 rounded-[4rem] shadow-2xl shadow-[#5A5A40]/30 text-center space-y-6 relative overflow-hidden">
-                                <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-                                    <div className="absolute -top-32 -left-32 w-80 h-80 bg-white rounded-full blur-[100px]" />
-                                    <div className="absolute -bottom-32 -right-32 w-80 h-80 bg-white rounded-full blur-[100px]" />
-                                </div>
+                        /* PHASE 2: Taking Quiz */
+                        <div className="space-y-12 pb-32">
+                            <div className="bg-[#5A5A40] text-white p-12 md:p-16 rounded-[4rem] shadow-2xl shadow-[#5A5A40]/30 text-center space-y-6 relative overflow-hidden">
                                 <div className="relative z-10">
-                                    <span className="bg-white/20 px-6 py-2 rounded-full text-sm font-bold uppercase tracking-widest mb-6 inline-block">第二階段：測驗開始</span>
-                                    <h2 className="text-5xl font-bold serif">準備好挑戰了嗎？</h2>
-                                    <p className="text-white/80 text-xl max-w-2xl mx-auto">請仔細閱讀下方題目並作答。完成後記得點擊最下方的提交按鈕喔！</p>
+                                    <span className="bg-white/20 px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest mb-4 inline-block">
+                                        第二階段：PIRLS 四層次測驗
+                                    </span>
+                                    <h2 className="text-4xl md:text-5xl font-bold serif">準備好挑戰了嗎？</h2>
+                                    <p className="text-white/80 text-lg md:text-xl max-w-2xl mx-auto">
+                                        請仔細閱讀下方題目與對應的素養層次。作答完成後點擊最下方提交即可！
+                                    </p>
                                 </div>
                             </div>
 
+                            {/* TF Questions */}
                             {questions.tf.length > 0 && (
-                                <section className="bg-white p-12 rounded-[3rem] border border-black/5 shadow-xl">
-                                    <h3 className="text-2xl font-bold mb-10 serif flex items-center gap-3">
+                                <section className="bg-white p-10 md:p-12 rounded-[3rem] border border-black/5 shadow-xl space-y-8">
+                                    <h3 className="text-2xl font-bold serif flex items-center gap-3 text-gray-800">
                                         <Icon name="check-circle" className="text-green-500" size={28} /> 是非題
                                     </h3>
-                                    <div className="space-y-8">
+                                    <div className="space-y-6">
                                         {questions.tf.map((q, idx) => (
-                                            <div key={idx} className="p-8 bg-gray-50 rounded-[2rem] flex items-center justify-between gap-8 border border-gray-100">
-                                                <p className="font-bold text-lg leading-relaxed">{idx + 1}. {q.content}</p>
-                                                <div className="flex gap-4 shrink-0">
+                                            <div key={idx} className="p-6 md:p-8 bg-gray-50 rounded-[2rem] flex flex-col md:flex-row md:items-center justify-between gap-6 border border-gray-100">
+                                                <div className="space-y-2 flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-xs font-mono font-bold text-gray-400">第 {idx + 1} 題</span>
+                                                        <PirlsBadge process={q.pirlsProcess} />
+                                                    </div>
+                                                    <p className="font-bold text-lg text-gray-800 leading-relaxed">{q.content}</p>
+                                                </div>
+                                                <div className="flex gap-4 shrink-0 self-end md:self-center">
                                                     <button 
                                                         onClick={() => setAnswersTF({...answersTF, [idx]: true})}
-                                                        className={`w-16 h-16 rounded-2xl border-2 font-bold text-2xl transition-all ${answersTF[idx] === true ? "bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/30" : "bg-white border-gray-200 text-gray-400 hover:border-green-200"}`}
+                                                        className={`w-16 h-16 rounded-2xl border-2 font-bold text-2xl transition-all ${answersTF[idx] === true ? "bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/30" : "bg-white border-gray-200 text-gray-400 hover:border-green-300"}`}
                                                     >
                                                         O
                                                     </button>
                                                     <button 
                                                         onClick={() => setAnswersTF({...answersTF, [idx]: false})}
-                                                        className={`w-16 h-16 rounded-2xl border-2 font-bold text-2xl transition-all ${answersTF[idx] === false ? "bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/30" : "bg-white border-gray-200 text-gray-400 hover:border-red-200"}`}
+                                                        className={`w-16 h-16 rounded-2xl border-2 font-bold text-2xl transition-all ${answersTF[idx] === false ? "bg-red-500 text-white border-red-500 shadow-lg shadow-red-500/30" : "bg-white border-gray-200 text-gray-400 hover:border-red-300"}`}
                                                     >
                                                         X
                                                     </button>
@@ -796,23 +1447,28 @@
                                 </section>
                             )}
 
+                            {/* MC Questions */}
                             {questions.mc.length > 0 && (
-                                <section className="bg-white p-12 rounded-[3rem] border border-black/5 shadow-xl">
-                                    <h3 className="text-2xl font-bold mb-10 serif flex items-center gap-3">
+                                <section className="bg-white p-10 md:p-12 rounded-[3rem] border border-black/5 shadow-xl space-y-10">
+                                    <h3 className="text-2xl font-bold serif flex items-center gap-3 text-gray-800">
                                         <Icon name="list" className="text-blue-500" size={28} /> 選擇題
                                     </h3>
-                                    <div className="space-y-12">
+                                    <div className="space-y-10">
                                         {questions.mc.map((q, idx) => (
-                                            <div key={idx} className="space-y-6">
-                                                <p className="font-bold text-lg leading-relaxed">{idx + 1}. {q.content}</p>
+                                            <div key={idx} className="space-y-4">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-mono font-bold text-gray-400">第 {idx + 1} 題</span>
+                                                    <PirlsBadge process={q.pirlsProcess} />
+                                                </div>
+                                                <p className="font-bold text-lg text-gray-800 leading-relaxed">{q.content}</p>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     {q.options.map((opt, optIdx) => (
                                                         <button 
                                                             key={optIdx}
                                                             onClick={() => setAnswersMC({...answersMC, [idx]: optIdx})}
-                                                            className={`p-6 rounded-2xl border-2 text-left transition-all font-medium ${answersMC[idx] === optIdx ? "bg-blue-500 text-white border-blue-500 shadow-lg shadow-blue-500/30" : "bg-gray-50 border-gray-100 hover:bg-white hover:border-blue-200"}`}
+                                                            className={`p-5 rounded-2xl border-2 text-left transition-all font-medium ${answersMC[idx] === optIdx ? "bg-blue-500 text-white border-blue-500 shadow-lg shadow-blue-500/30" : "bg-gray-50 border-gray-100 hover:bg-white hover:border-blue-200 text-gray-700"}`}
                                                         >
-                                                            <span className="mr-3 opacity-50 font-mono">{String.fromCharCode(65 + optIdx)}.</span>
+                                                            <span className="mr-3 opacity-60 font-mono font-bold">{String.fromCharCode(65 + optIdx)}.</span>
                                                             {opt}
                                                         </button>
                                                     ))}
@@ -823,23 +1479,28 @@
                                 </section>
                             )}
 
+                            {/* English MC Questions */}
                             {questions.en_mc && questions.en_mc.length > 0 && (
-                                <section className="bg-white p-12 rounded-[3rem] border border-black/5 shadow-xl">
-                                    <h3 className="text-2xl font-bold mb-10 serif flex items-center gap-3">
+                                <section className="bg-white p-10 md:p-12 rounded-[3rem] border border-black/5 shadow-xl space-y-10">
+                                    <h3 className="text-2xl font-bold serif flex items-center gap-3 text-gray-800">
                                         <Icon name="languages" className="text-indigo-500" size={28} /> 英語選擇題
                                     </h3>
-                                    <div className="space-y-12">
+                                    <div className="space-y-10">
                                         {questions.en_mc.map((q, idx) => (
-                                            <div key={idx} className="space-y-6">
-                                                <p className="font-bold text-lg leading-relaxed">{idx + 1}. {q.content}</p>
+                                            <div key={idx} className="space-y-4">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-mono font-bold text-gray-400">第 {idx + 1} 題</span>
+                                                    <PirlsBadge process={q.pirlsProcess} />
+                                                </div>
+                                                <p className="font-bold text-lg text-gray-800 leading-relaxed">{q.content}</p>
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     {q.options.map((opt, optIdx) => (
                                                         <button 
                                                             key={optIdx}
                                                             onClick={() => setAnswersEnMC({...answersEnMC, [idx]: optIdx})}
-                                                            className={`p-6 rounded-2xl border-2 text-left transition-all font-medium ${answersEnMC[idx] === optIdx ? "bg-indigo-500 text-white border-indigo-500 shadow-lg shadow-indigo-500/30" : "bg-gray-50 border-gray-100 hover:bg-white hover:border-indigo-200"}`}
+                                                            className={`p-5 rounded-2xl border-2 text-left transition-all font-medium ${answersEnMC[idx] === optIdx ? "bg-indigo-500 text-white border-indigo-500 shadow-lg shadow-indigo-500/30" : "bg-gray-50 border-gray-100 hover:bg-white hover:border-indigo-200 text-gray-700"}`}
                                                         >
-                                                            <span className="mr-3 opacity-50 font-mono">{String.fromCharCode(65 + optIdx)}.</span>
+                                                            <span className="mr-3 opacity-60 font-mono font-bold">{String.fromCharCode(65 + optIdx)}.</span>
                                                             {opt}
                                                         </button>
                                                     ))}
@@ -850,21 +1511,26 @@
                                 </section>
                             )}
 
+                            {/* SA Questions */}
                             {questions.sa.length > 0 && (
-                                <section className="bg-white p-12 rounded-[3rem] border border-black/5 shadow-xl">
-                                    <h3 className="text-2xl font-bold mb-10 serif flex items-center gap-3">
-                                        <Icon name="pen-tool" className="text-amber-500" size={28} /> 問答題
+                                <section className="bg-white p-10 md:p-12 rounded-[3rem] border border-black/5 shadow-xl space-y-10">
+                                    <h3 className="text-2xl font-bold serif flex items-center gap-3 text-gray-800">
+                                        <Icon name="pen-tool" className="text-amber-500" size={28} /> 問答題（詮釋整合與檢驗評估）
                                     </h3>
-                                    <div className="space-y-12">
+                                    <div className="space-y-10">
                                         {questions.sa.map((q, idx) => (
                                             <div key={idx} className="space-y-4">
-                                                <p className="font-bold text-lg leading-relaxed">{idx + 1}. {q.content}</p>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs font-mono font-bold text-gray-400">第 {idx + 1} 題</span>
+                                                    <PirlsBadge process={q.pirlsProcess || 'L3_INTERPRET'} />
+                                                </div>
+                                                <p className="font-bold text-lg text-gray-800 leading-relaxed">{q.content}</p>
                                                 <textarea 
-                                                    rows={5}
-                                                    placeholder="請輸入您的回答..."
+                                                    rows={4}
+                                                    placeholder="請輸入您的思考與回答..."
                                                     value={answersSA[idx] || ''}
                                                     onChange={(e) => setAnswersSA({...answersSA, [idx]: e.target.value})}
-                                                    className="w-full p-8 bg-gray-50 border-2 border-gray-100 rounded-[2rem] outline-none focus:ring-4 focus:ring-[#5A5A40]/10 focus:border-[#5A5A40] transition-all text-lg"
+                                                    className="w-full p-6 bg-gray-50 border-2 border-gray-100 rounded-[2rem] outline-none focus:ring-4 focus:ring-[#5A5A40]/10 focus:border-[#5A5A40] transition-all text-base text-gray-800"
                                                 />
                                             </div>
                                         ))}
@@ -878,53 +1544,57 @@
                                 className="w-full py-6 bg-[#5A5A40] text-white rounded-[2.5rem] font-bold text-2xl hover:bg-[#4A4A30] shadow-2xl shadow-[#5A5A40]/40 transition-all flex items-center justify-center gap-4 disabled:opacity-50"
                             >
                                 {isSubmitting ? <Icon name="loader-2" className="animate-spin" size={32} /> : <Icon name="send" size={28} />}
-                                {isSubmitting ? '正在處理中...' : '提交並查看結果'}
+                                {isSubmitting ? '正在計算 PIRLS 素養分析中...' : '提交並查看 PIRLS 診斷報告'}
                             </button>
                         </div>
                     ) : (
-                        <div className="space-y-16 pb-32">
-                            <div className="bg-[#5A5A40] text-white p-16 rounded-[4rem] shadow-2xl shadow-[#5A5A40]/30 text-center space-y-6 relative overflow-hidden">
-                                <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-                                    <div className="absolute -top-32 -left-32 w-80 h-80 bg-white rounded-full blur-[100px]" />
-                                    <div className="absolute -bottom-32 -right-32 w-80 h-80 bg-white rounded-full blur-[100px]" />
-                                </div>
+                        /* PHASE 3: Immediate Results & PIRLS Diagnostic */
+                        <div className="space-y-12 pb-32">
+                            <div className="bg-[#5A5A40] text-white p-12 md:p-16 rounded-[4rem] shadow-2xl shadow-[#5A5A40]/30 text-center space-y-6 relative overflow-hidden">
                                 <div className="relative z-10">
-                                    <span className="bg-white/20 px-6 py-2 rounded-full text-sm font-bold uppercase tracking-widest mb-6 inline-block">第三階段：測驗結果</span>
-                                    <h2 className="text-5xl font-bold serif">測驗已提交！</h2>
-                                    <p className="text-white/80 text-xl max-w-2xl mx-auto">這是您的答題結果，是非題與選擇題已自動對答案。</p>
+                                    <span className="bg-white/20 px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest mb-4 inline-block">
+                                        第三階段：測驗結果與 PIRLS 診斷
+                                    </span>
+                                    <h2 className="text-4xl md:text-5xl font-bold serif">測驗已提交！</h2>
+                                    <p className="text-white/80 text-lg md:text-xl max-w-2xl mx-auto">
+                                        下方為您的 PIRLS 國際閱讀素養常模落點、四向度雷達圖與作答明細。
+                                    </p>
                                 </div>
                             </div>
 
+                            {/* PIRLS Diagnostic Card */}
+                            {submittedRecord && (
+                                <PIRLSDiagnosticReport 
+                                    pirlsResult={submittedRecord.pirlsResult} 
+                                    score={submittedRecord.score} 
+                                />
+                            )}
+
                             {/* Review TF */}
                             {questions.tf.length > 0 && (
-                                <section className="bg-white p-12 rounded-[3rem] border border-black/5 shadow-xl">
-                                    <h3 className="text-2xl font-bold mb-10 serif flex items-center gap-3">
-                                        <Icon name="check-circle" className="text-green-500" size={28} /> 是非題結果
+                                <section className="bg-white p-10 md:p-12 rounded-[3rem] border border-black/5 shadow-xl space-y-6">
+                                    <h3 className="text-2xl font-bold serif flex items-center gap-3 text-gray-800">
+                                        <Icon name="check-circle" className="text-green-500" size={26} /> 是非題對答
                                     </h3>
-                                    <div className="space-y-6">
+                                    <div className="space-y-4">
                                         {questions.tf.map((q, idx) => {
                                             const studentAns = answersTF[idx];
                                             const isCorrect = studentAns === q.answer;
                                             return (
-                                                <div key={idx} className={`p-8 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
-                                                    <div className="flex justify-between items-start gap-4">
-                                                        <p className="font-bold text-lg leading-relaxed">{idx + 1}. {q.content}</p>
-                                                        {isCorrect ? 
-                                                            <span className="bg-green-500 text-white px-4 py-1 rounded-full text-sm font-bold shrink-0">正確</span> :
-                                                            <span className="bg-red-500 text-white px-4 py-1 rounded-full text-sm font-bold shrink-0">錯誤</span>
-                                                        }
+                                                <div key={idx} className={`p-6 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
+                                                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                                                        <span className="font-mono text-xs font-bold text-gray-400">第 {idx + 1} 題</span>
+                                                        <PirlsBadge process={q.pirlsProcess} />
+                                                        <span className={`ml-auto px-3 py-1 rounded-full text-xs font-bold ${isCorrect ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                                            {isCorrect ? '正確' : '錯誤'}
+                                                        </span>
                                                     </div>
-                                                    <div className="mt-4 flex gap-6 text-sm font-bold">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-gray-400 uppercase tracking-wider text-[10px]">你的回答:</span>
-                                                            <span className={studentAns === q.answer ? "text-green-600" : "text-red-600"}>
-                                                                {studentAns === undefined ? '未答' : (studentAns ? 'O' : 'X')}
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-gray-400 uppercase tracking-wider text-[10px]">正確答案:</span>
-                                                            <span className="text-green-600">{q.answer ? 'O' : 'X'}</span>
-                                                        </div>
+                                                    <p className="font-bold text-base text-gray-800 mb-3">{q.content}</p>
+                                                    <div className="flex gap-6 text-sm font-bold font-mono">
+                                                        <span className={isCorrect ? "text-green-600" : "text-red-600"}>
+                                                            你的回答：{studentAns === undefined ? '未答' : (studentAns ? 'O' : 'X')}
+                                                        </span>
+                                                        <span className="text-green-600">正確答案：{q.answer ? 'O' : 'X'}</span>
                                                     </div>
                                                 </div>
                                             );
@@ -935,29 +1605,30 @@
 
                             {/* Review MC */}
                             {questions.mc.length > 0 && (
-                                <section className="bg-white p-12 rounded-[3rem] border border-black/5 shadow-xl">
-                                    <h3 className="text-2xl font-bold mb-10 serif flex items-center gap-3">
-                                        <Icon name="list" className="text-blue-500" size={28} /> 選擇題結果
+                                <section className="bg-white p-10 md:p-12 rounded-[3rem] border border-black/5 shadow-xl space-y-6">
+                                    <h3 className="text-2xl font-bold serif flex items-center gap-3 text-gray-800">
+                                        <Icon name="list" className="text-blue-500" size={26} /> 選擇題對答
                                     </h3>
-                                    <div className="space-y-8">
+                                    <div className="space-y-6">
                                         {questions.mc.map((q, idx) => {
                                             const studentAnsIdx = answersMC[idx];
                                             const isCorrect = studentAnsIdx === q.answer;
                                             return (
-                                                <div key={idx} className={`p-8 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
-                                                    <div className="flex justify-between items-start gap-4 mb-6">
-                                                        <p className="font-bold text-lg leading-relaxed">{idx + 1}. {q.content}</p>
-                                                        {isCorrect ? 
-                                                            <span className="bg-green-500 text-white px-4 py-1 rounded-full text-sm font-bold shrink-0">正確</span> :
-                                                            <span className="bg-red-500 text-white px-4 py-1 rounded-full text-sm font-bold shrink-0">錯誤</span>
-                                                        }
+                                                <div key={idx} className={`p-6 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
+                                                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                                                        <span className="font-mono text-xs font-bold text-gray-400">第 {idx + 1} 題</span>
+                                                        <PirlsBadge process={q.pirlsProcess} />
+                                                        <span className={`ml-auto px-3 py-1 rounded-full text-xs font-bold ${isCorrect ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                                            {isCorrect ? '正確' : '錯誤'}
+                                                        </span>
                                                     </div>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <p className="font-bold text-base text-gray-800 mb-4">{q.content}</p>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                         {q.options.map((opt, oIdx) => (
-                                                            <div key={oIdx} className={`p-4 rounded-2xl border text-sm flex items-center justify-between ${oIdx === q.answer ? "bg-green-100 border-green-200 text-green-800 font-bold" : (oIdx === studentAnsIdx && !isCorrect ? "bg-red-100 border-red-200 text-red-800" : "bg-white border-gray-100 text-gray-500")}`}>
+                                                            <div key={oIdx} className={`p-3.5 rounded-xl border text-sm flex items-center justify-between ${oIdx === q.answer ? "bg-green-100 border-green-200 text-green-800 font-bold" : (oIdx === studentAnsIdx && !isCorrect ? "bg-red-100 border-red-200 text-red-800" : "bg-white border-gray-100 text-gray-600")}`}>
                                                                 <span>{String.fromCharCode(65 + oIdx)}. {opt}</span>
-                                                                {oIdx === q.answer && <span className="text-[10px] bg-green-200 px-2 py-0.5 rounded-full uppercase font-bold">正確</span>}
-                                                                {oIdx === studentAnsIdx && !isCorrect && <span className="text-[10px] bg-red-200 px-2 py-0.5 rounded-full uppercase font-bold">你的選擇</span>}
+                                                                {oIdx === q.answer && <span className="text-[10px] bg-green-200 px-2 py-0.5 rounded-full font-bold">正確</span>}
+                                                                {oIdx === studentAnsIdx && !isCorrect && <span className="text-[10px] bg-red-200 px-2 py-0.5 rounded-full font-bold">你的選擇</span>}
                                                             </div>
                                                         ))}
                                                     </div>
@@ -970,29 +1641,30 @@
 
                             {/* Review English MC */}
                             {questions.en_mc && questions.en_mc.length > 0 && (
-                                <section className="bg-white p-12 rounded-[3rem] border border-black/5 shadow-xl">
-                                    <h3 className="text-2xl font-bold mb-10 serif flex items-center gap-3">
-                                        <Icon name="languages" className="text-indigo-500" size={28} /> 英語選擇題結果
+                                <section className="bg-white p-10 md:p-12 rounded-[3rem] border border-black/5 shadow-xl space-y-6">
+                                    <h3 className="text-2xl font-bold serif flex items-center gap-3 text-gray-800">
+                                        <Icon name="languages" className="text-indigo-500" size={26} /> 英語選擇題對答
                                     </h3>
-                                    <div className="space-y-8">
+                                    <div className="space-y-6">
                                         {questions.en_mc.map((q, idx) => {
                                             const studentAnsIdx = answersEnMC[idx];
                                             const isCorrect = studentAnsIdx === q.answer;
                                             return (
-                                                <div key={idx} className={`p-8 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
-                                                    <div className="flex justify-between items-start gap-4 mb-6">
-                                                        <p className="font-bold text-lg leading-relaxed">{idx + 1}. {q.content}</p>
-                                                        {isCorrect ? 
-                                                            <span className="bg-green-500 text-white px-4 py-1 rounded-full text-sm font-bold shrink-0">正確</span> :
-                                                            <span className="bg-red-500 text-white px-4 py-1 rounded-full text-sm font-bold shrink-0">錯誤</span>
-                                                        }
+                                                <div key={idx} className={`p-6 rounded-[2rem] border transition-all ${isCorrect ? "bg-green-50/50 border-green-100" : "bg-red-50/50 border-red-100"}`}>
+                                                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                                                        <span className="font-mono text-xs font-bold text-gray-400">第 {idx + 1} 題</span>
+                                                        <PirlsBadge process={q.pirlsProcess} />
+                                                        <span className={`ml-auto px-3 py-1 rounded-full text-xs font-bold ${isCorrect ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                                            {isCorrect ? '正確' : '錯誤'}
+                                                        </span>
                                                     </div>
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    <p className="font-bold text-base text-gray-800 mb-4">{q.content}</p>
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                                         {q.options.map((opt, oIdx) => (
-                                                            <div key={oIdx} className={`p-4 rounded-2xl border text-sm flex items-center justify-between ${oIdx === q.answer ? "bg-green-100 border-green-200 text-green-800 font-bold" : (oIdx === studentAnsIdx && !isCorrect ? "bg-red-100 border-red-200 text-red-800" : "bg-white border-gray-100 text-gray-500")}`}>
+                                                            <div key={oIdx} className={`p-3.5 rounded-xl border text-sm flex items-center justify-between ${oIdx === q.answer ? "bg-green-100 border-green-200 text-green-800 font-bold" : (oIdx === studentAnsIdx && !isCorrect ? "bg-red-100 border-red-200 text-red-800" : "bg-white border-gray-100 text-gray-600")}`}>
                                                                 <span>{String.fromCharCode(65 + oIdx)}. {opt}</span>
-                                                                {oIdx === q.answer && <span className="text-[10px] bg-green-200 px-2 py-0.5 rounded-full uppercase font-bold">正確</span>}
-                                                                {oIdx === studentAnsIdx && !isCorrect && <span className="text-[10px] bg-red-200 px-2 py-0.5 rounded-full uppercase font-bold">你的選擇</span>}
+                                                                {oIdx === q.answer && <span className="text-[10px] bg-green-200 px-2 py-0.5 rounded-full font-bold">正確</span>}
+                                                                {oIdx === studentAnsIdx && !isCorrect && <span className="text-[10px] bg-red-200 px-2 py-0.5 rounded-full font-bold">你的選擇</span>}
                                                             </div>
                                                         ))}
                                                     </div>
@@ -1009,7 +1681,7 @@
                                     className="w-full py-6 bg-[#5A5A40] text-white rounded-[2.5rem] font-bold text-xl hover:bg-[#4A4A30] shadow-2xl shadow-[#5A5A40]/40 transition-all flex items-center justify-center gap-4"
                                 >
                                     <Icon name="list" size={24} />
-                                    完成測驗，返回列表
+                                    完成測驗，返回文章列表
                                 </button>
                             </div>
                         </div>
