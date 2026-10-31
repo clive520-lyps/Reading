@@ -717,6 +717,12 @@
                 }
             };
 
+            // Find recent completed/graded record for notification
+            const gradedRecords = records.filter(r => r.graded);
+            const latestGradedRecord = gradedRecords.length > 0
+                ? [...gradedRecords].sort((a, b) => (b.gradedAt || b.timestamp) - (a.gradedAt || a.timestamp))[0]
+                : null;
+
             return (
                 <div className="min-h-screen flex flex-col">
                     <header className="bg-white border-b border-black/5 px-8 py-5 flex justify-between items-center sticky top-0 z-50 backdrop-blur-md bg-white/90">
@@ -754,6 +760,43 @@
                         {/* VIEW: Article List */}
                         {view === 'list' && (
                             <div className="space-y-12">
+                                {/* Top notification banner when there is a newly graded record */}
+                                {latestGradedRecord && (
+                                    <div className="bg-gradient-to-r from-emerald-800 via-[#4A4A30] to-[#5A5A40] text-white p-8 rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6 border border-white/20">
+                                        <div className="flex items-start md:items-center gap-5">
+                                            <div className="w-14 h-14 bg-white/20 rounded-2xl flex items-center justify-center text-white shrink-0 mt-1 md:mt-0 shadow-inner">
+                                                <Icon name="award" size={30} className="text-yellow-300" />
+                                            </div>
+                                            <div className="space-y-1.5">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <span className="bg-yellow-400 text-[#3A3A20] text-xs font-black px-3 py-0.5 rounded-full uppercase tracking-wider shadow-xs">
+                                                        🎉 最新批改完成通知
+                                                    </span>
+                                                    <span className="text-xs text-white/80">
+                                                        {new Date(latestGradedRecord.gradedAt || latestGradedRecord.timestamp).toLocaleDateString()}
+                                                    </span>
+                                                </div>
+                                                <h4 className="text-2xl font-bold serif leading-snug">
+                                                    《{articles.find(a => a.id === latestGradedRecord.articleId)?.title || '閱讀測驗'}》已由老師完成 PIRLS 閱讀素養診斷！
+                                                </h4>
+                                                <p className="text-sm text-white/90 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                                    <span>測驗總分：<strong className="text-yellow-300 text-base">{latestGradedRecord.score} 分</strong></span>
+                                                    {latestGradedRecord.pirlsResult?.pirlsScore && (
+                                                        <span>‧ PIRLS 常模分數：<strong className="text-white">{latestGradedRecord.pirlsResult.pirlsScore} 分</strong></span>
+                                                    )}
+                                                    <span>‧ 四向度雷達圖與能力基準落點已產出</span>
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => handleViewDetail(latestGradedRecord)}
+                                            className="px-6 py-3.5 bg-white text-[#4A4A30] hover:bg-yellow-50 font-bold text-sm rounded-2xl transition-all shadow-lg shrink-0 flex items-center gap-2 cursor-pointer self-stretch md:self-auto justify-center"
+                                        >
+                                            <span>查看完整 PIRLS 診斷報告</span>
+                                            <Icon name="chevron-right" size={18} />
+                                        </button>
+                                    </div>
+                                )}
                                 <div className="bg-[#5A5A40] text-white p-12 rounded-[3rem] shadow-2xl relative overflow-hidden">
                                     <div className="relative z-10">
                                         <div className="inline-flex items-center gap-2 bg-white/20 px-3.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-4">
@@ -853,14 +896,20 @@
                                             <div key={r.id} className="bg-white p-8 rounded-[2rem] border border-black/5 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
                                                 <div className="flex items-center gap-6">
                                                     <div className={`w-16 h-16 rounded-3xl flex items-center justify-center shrink-0 shadow-inner ${r.graded ? "bg-green-50 text-green-600" : "bg-amber-50 text-amber-600"}`}>
-                                                        {r.graded ? <Icon name="check-circle" size={32} /> : <Icon name="loader-2" size={32} className="animate-spin" />}
+                                                        {r.graded ? <Icon name="check-circle" size={32} /> : <Icon name="clock" size={32} />}
                                                     </div>
                                                     <div>
-                                                        <div className="flex items-center gap-2 mb-1">
+                                                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                                                             <h4 className="font-bold text-xl">{articleObj?.title || '未知文章'}</h4>
-                                                            {pirlsBenchmark && (
-                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pirlsBenchmark.badgeColor}`}>
-                                                                    {pirlsBenchmark.short}
+                                                            {r.graded ? (
+                                                                pirlsBenchmark && (
+                                                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pirlsBenchmark.badgeColor}`}>
+                                                                        {pirlsBenchmark.short}
+                                                                    </span>
+                                                                )
+                                                            ) : (
+                                                                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                                                                    <Icon name="clock" size={10} /> 待老師後台批改
                                                                 </span>
                                                             )}
                                                         </div>
@@ -886,7 +935,9 @@
                                                 <div className="flex items-center gap-8 self-end md:self-center">
                                                     <div className="text-right">
                                                         <p className="text-xs text-gray-400 uppercase font-bold tracking-widest mb-1">得分</p>
-                                                        <p className="text-4xl font-bold text-[#5A5A40]">{r.graded ? r.score : '--'}</p>
+                                                        <p className="text-4xl font-bold text-[#5A5A40]">
+                                                            {r.graded ? `${r.score} 分` : <span className="text-sm font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200">待批改</span>}
+                                                        </p>
                                                     </div>
                                                     <button 
                                                         onClick={() => handleViewDetail(r)}
@@ -952,24 +1003,28 @@
                                         </div>
                                         <div className="bg-gray-50 px-8 py-5 rounded-[2rem] border border-gray-100 text-center shadow-inner self-end md:self-auto">
                                             <div className="text-5xl font-bold text-[#5A5A40] mb-0.5 font-mono">
-                                                {selectedRecord.graded ? selectedRecord.score : '--'}
+                                                {selectedRecord.graded ? `${selectedRecord.score}` : <span className="text-2xl font-sans text-amber-600 font-bold">待批改</span>}
                                             </div>
-                                            <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">測驗得分</div>
+                                            <div className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">{selectedRecord.graded ? '測驗得分' : '批改狀態'}</div>
                                         </div>
                                     </div>
 
-                                    {/* PIRLS Diagnostic Full Card */}
+                                    {/* PIRLS Diagnostic Full Card or Pending Notice */}
                                     {selectedRecord.graded ? (
                                         <PIRLSDiagnosticReport 
                                             pirlsResult={selectedRecord.pirlsResult} 
                                             score={selectedRecord.score} 
                                         />
                                     ) : (
-                                        <div className="p-8 rounded-[2.5rem] bg-amber-50 border border-amber-200 text-amber-800 flex items-center gap-4">
-                                            <Icon name="loader-2" size={24} className="animate-spin text-amber-600" />
+                                        <div className="p-8 rounded-[2.5rem] bg-amber-50/70 border border-amber-200 text-amber-900 flex items-center gap-4 text-center sm:text-left flex-col sm:flex-row">
+                                            <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
+                                                <Icon name="clock" size={24} />
+                                            </div>
                                             <div>
-                                                <p className="font-bold">AI 老師正在進行 PIRLS 全向度診斷中...</p>
-                                                <p className="text-xs text-amber-600 mt-0.5">批改完成後此處將自動呈現雷達圖、常模標準分與能力落點建議。</p>
+                                                <h4 className="text-lg font-bold text-amber-900 serif">⏳ 測驗等待老師後台批改中</h4>
+                                                <p className="text-xs md:text-sm text-amber-800 mt-1 leading-relaxed">
+                                                    客觀題（是非題、選擇題）已核對完畢。老師登入後台時，系統將自動進行 AI 即時深度批改；批改完成後，此處將解鎖呈現 PIRLS 認知歷程雷達圖、常模標準分與能力落點診斷！
+                                                </p>
                                             </div>
                                         </div>
                                     )}
@@ -1173,6 +1228,7 @@
             const [startTime, setStartTime] = useState(null);
             const [newRecordId, setNewRecordId] = useState(null);
             const [submittedRecord, setSubmittedRecord] = useState(null);
+            const [submissionStats, setSubmissionStats] = useState({ correctCount: 0, totalObjective: 0, objScore: 0 });
             const [showArticleModal, setShowArticleModal] = useState(false);
             const [articleFontSize, setArticleFontSize] = useState('text-base');
 
@@ -1288,8 +1344,10 @@
                             if (answersEnMC[idx] === q.answer) correctCount++;
                         });
                     }
-                    const objScore = totalObjective > 0 ? Math.round((correctCount / totalObjective) * 100) : 80;
+                    const objScore = totalObjective > 0 ? Math.round((correctCount / totalObjective) * 100) : 0;
+                    setSubmissionStats({ correctCount, totalObjective, objScore });
 
+                    // 儲存待批改紀錄至資料庫（客觀題已核對，問答題留待老師端後台登入時自動即時批改）
                     const recordRef = window.fb.push(window.fb.ref(window.fb.db, 'records'));
                     const recData = {
                         timestamp: Date.now(),
@@ -1299,29 +1357,10 @@
                         answersMC,
                         answersEnMC,
                         answersSA,
-                        graded: true,
+                        graded: false,
                         score: objScore,
-                        feedback: '測驗已完成！是非與選擇客觀題已自動對齊，包含 PIRLS 四層次能力落點分析。',
-                        pirlsResult: {
-                            pirlsScore: Math.round(380 + (objScore / 100) * 320),
-                            benchmark: objScore >= 85 ? 'advanced' : (objScore >= 70 ? 'high' : (objScore >= 55 ? 'intermediate' : (objScore >= 40 ? 'low' : 'below_low'))),
-                            radarScores: {
-                                L1: Math.min(100, Math.round(objScore * 1.05)),
-                                L2: Math.min(100, Math.round(objScore * 0.98)),
-                                L3: Math.max(20, Math.round(objScore * 0.9)),
-                                L4: Math.max(20, Math.round(objScore * 0.82))
-                            },
-                            strengths: [
-                                '具備敏銳的文本字面訊息辨別力（L1 提取特定訊息表現佳）',
-                                '能依據文章段落脈絡快速掌握情節因果（L2 直接推論表現良好）'
-                            ],
-                            weaknesses: [
-                                '建議在跨段落的核心觀點詮釋上進一步深化（L3 詮釋整合精進空間）',
-                                '可嘗試多思考作者使用特定詞語與視角的深層用意（L4 檢驗評估思考拓展）'
-                            ],
-                            overallDiagnosis: `受測者在本次測驗中展現穩健的閱讀素養，落點於國際常模標準 ${Math.round(380 + (objScore / 100) * 320)} 分，具備良好文本理解力！`
-                        },
-                        status: 'completed',
+                        feedback: '測驗已送交！客觀題已核對完畢，問答題與 PIRLS 全向度閱讀素養分析等待老師後台批改。',
+                        status: 'pending',
                         duration
                     };
 
