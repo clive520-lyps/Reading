@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>雲端閱讀認證 - PIRLS 國際閱讀素養學生端</title>
+    <title>雲端閱讀認證 PIRLS國際閱讀素養學生端</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts -->
@@ -1171,6 +1171,8 @@
             const [startTime, setStartTime] = useState(null);
             const [newRecordId, setNewRecordId] = useState(null);
             const [submittedRecord, setSubmittedRecord] = useState(null);
+            const [showArticleMobile, setShowArticleMobile] = useState(false);
+            const [articleFontSize, setArticleFontSize] = useState('text-base');
 
             useEffect(() => {
                 if (step === 'quiz') {
@@ -1346,7 +1348,7 @@
             const gradeLabel = article.gradeLevel ? (GRADE_LEVEL_LABELS[article.gradeLevel] || '高年級') : null;
 
             return (
-                <div className={`max-w-4xl mx-auto ${(step === 'reading' || step === 'quiz') ? 'select-none' : ''}`}>
+                <div className={`${step === 'quiz' ? 'max-w-7xl' : 'max-w-4xl'} mx-auto ${(step === 'reading' || step === 'quiz') ? 'select-none' : ''}`}>
                     <div className="flex justify-between items-center mb-10">
                         <button onClick={onBack} className="text-gray-500 hover:text-gray-800 flex items-center gap-2 font-bold">
                             <Icon name="chevron-left" size={20} />
@@ -1389,27 +1391,100 @@
                             </div>
 
                             <button 
-                                onClick={() => setStep('quiz')}
-                                className="w-full py-5 bg-[#5A5A40] text-white rounded-[2rem] font-bold text-xl hover:bg-[#4A4A30] shadow-2xl shadow-[#5A5A40]/30 transition-all flex items-center justify-center gap-3"
+                                onClick={() => {
+                                    setStep('quiz');
+                                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                                }}
+                                className="w-full py-5 bg-[#5A5A40] text-white rounded-[2rem] font-bold text-xl hover:bg-[#4A4A30] shadow-2xl shadow-[#5A5A40]/30 transition-all flex items-center justify-center gap-3 cursor-pointer"
                             >
-                                我讀完了，開始四層次測驗！
+                                我讀完了，開始四層次測驗（答題時隨時可對照文章）
                                 <Icon name="arrow-right" size={24} />
                             </button>
                         </div>
                     ) : step === 'quiz' ? (
-                        /* PHASE 2: Taking Quiz */
-                        <div className="space-y-12 pb-32">
-                            <div className="bg-[#5A5A40] text-white p-12 md:p-16 rounded-[4rem] shadow-2xl shadow-[#5A5A40]/30 text-center space-y-6 relative overflow-hidden">
-                                <div className="relative z-10">
-                                    <span className="bg-white/20 px-6 py-2 rounded-full text-xs font-bold uppercase tracking-widest mb-4 inline-block">
-                                        第二階段：PIRLS 四層次測驗
+                        /* PHASE 2: Taking Quiz with Article Reference */
+                        <div className="space-y-8 pb-32">
+                            <div className="bg-[#5A5A40] text-white p-8 md:p-12 rounded-[3rem] shadow-xl shadow-[#5A5A40]/20 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden">
+                                <div className="relative z-10 space-y-2">
+                                    <span className="bg-white/20 px-5 py-1.5 rounded-full text-xs font-bold uppercase tracking-widest inline-flex items-center gap-2">
+                                        <Icon name="book-open" size={14} /> 第二階段：PIRLS 四層次測驗（文章對照）
                                     </span>
-                                    <h2 className="text-4xl md:text-5xl font-bold serif">準備好挑戰了嗎？</h2>
-                                    <p className="text-white/80 text-lg md:text-xl max-w-2xl mx-auto">
-                                        請仔細閱讀下方題目與對應的素養層次。作答完成後點擊最下方提交即可！
+                                    <h2 className="text-3xl md:text-4xl font-bold serif">{article.title}</h2>
+                                    <p className="text-white/80 text-sm md:text-base max-w-2xl">
+                                        左側（手機可點選展開按鈕）可隨時翻閱文章細節，題目涵蓋 L1 提取訊息、L2 直接推論、L3 詮釋整合與 L4 檢驗評估！
                                     </p>
                                 </div>
+                                <div className="lg:hidden w-full md:w-auto relative z-10">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowArticleMobile(!showArticleMobile)}
+                                        className="w-full py-3.5 px-6 bg-white text-[#5A5A40] rounded-2xl font-bold text-sm shadow-md flex items-center justify-center gap-2 cursor-pointer"
+                                    >
+                                        <Icon name="book-open" size={18} />
+                                        {showArticleMobile ? '收起文章' : '📖 展開對照閱讀文章'}
+                                    </button>
+                                </div>
                             </div>
+
+                            {/* Two-Column Split Layout */}
+                            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                                {/* Left Column: Sticky Article Panel */}
+                                <div className={`lg:col-span-5 space-y-4 ${showArticleMobile ? 'block' : 'hidden lg:block'}`}>
+                                    <div className="bg-white rounded-[2.5rem] border border-black/5 shadow-md p-6 md:p-8 lg:sticky lg:top-8 lg:max-h-[85vh] lg:overflow-y-auto space-y-4">
+                                        <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+                                            <div className="flex items-center gap-2">
+                                                <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-[#5A5A40] bg-[#5A5A40]/10 px-3 py-1 rounded-full">
+                                                    <Icon name="book-open" size={14} /> 原文對照閱讀
+                                                </span>
+                                                {textType && (
+                                                    <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full ${textType.color}`}>
+                                                        {textType.label}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {/* Font size toggles */}
+                                            <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-xl">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setArticleFontSize('text-sm')}
+                                                    className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all ${articleFontSize === 'text-sm' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}
+                                                    title="小字"
+                                                >
+                                                    小
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setArticleFontSize('text-base')}
+                                                    className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all ${articleFontSize === 'text-base' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}
+                                                    title="中字"
+                                                >
+                                                    中
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setArticleFontSize('text-lg')}
+                                                    className={`px-2 py-0.5 rounded-lg text-xs font-bold transition-all ${articleFontSize === 'text-lg' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400'}`}
+                                                    title="大字"
+                                                >
+                                                    大
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        <h3 className="text-xl md:text-2xl font-bold serif text-gray-900 leading-snug">
+                                            {article.title}
+                                        </h3>
+
+                                        <div className={`markdown-body leading-loose text-gray-700 bg-[#FCFCF9] p-6 rounded-2xl border border-gray-100 ${articleFontSize}`}>
+                                            {(article.content || '').split('\n').map((p, i) => (
+                                                <p key={i} className="mb-3">{p}</p>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Right Column: Questions */}
+                                <div className="lg:col-span-7 space-y-8">
 
                             {/* TF Questions */}
                             {questions.tf.length > 0 && (
@@ -1538,14 +1613,16 @@
                                 </section>
                             )}
 
-                            <button 
-                                disabled={isSubmitting}
-                                onClick={handleSubmit}
-                                className="w-full py-6 bg-[#5A5A40] text-white rounded-[2.5rem] font-bold text-2xl hover:bg-[#4A4A30] shadow-2xl shadow-[#5A5A40]/40 transition-all flex items-center justify-center gap-4 disabled:opacity-50"
-                            >
-                                {isSubmitting ? <Icon name="loader-2" className="animate-spin" size={32} /> : <Icon name="send" size={28} />}
-                                {isSubmitting ? '正在計算 PIRLS 素養分析中...' : '提交並查看 PIRLS 診斷報告'}
-                            </button>
+                                    <button 
+                                        disabled={isSubmitting}
+                                        onClick={handleSubmit}
+                                        className="w-full py-6 bg-[#5A5A40] text-white rounded-[2.5rem] font-bold text-2xl hover:bg-[#4A4A30] shadow-2xl shadow-[#5A5A40]/40 transition-all flex items-center justify-center gap-4 disabled:opacity-50 cursor-pointer"
+                                    >
+                                        {isSubmitting ? <Icon name="loader-2" className="animate-spin" size={32} /> : <Icon name="send" size={28} />}
+                                        {isSubmitting ? '正在計算 PIRLS 素養分析中...' : '提交並查看 PIRLS 診斷報告'}
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     ) : (
                         /* PHASE 3: Immediate Results & PIRLS Diagnostic */
