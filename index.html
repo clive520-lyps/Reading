@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>雲端閱讀認證 - PIRLS 國際閱讀素養學生端</title>
+    <title>雲端閱讀認證PIRLS國際閱讀素養學生端</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Google Fonts -->
@@ -529,7 +529,8 @@
                     const studentRef = window.fb.ref(window.fb.db, `students/${cleanId}`);
                     const snapshot = await window.fb.get(studentRef);
                     if (snapshot.exists() && snapshot.val().password === cleanPass) {
-                        setUser(snapshot.val());
+                        const sData = snapshot.val();
+                        setUser({ id: cleanId, studentId: cleanId, ...sData });
                         setView('dashboard');
                     } else {
                         setError('帳號或密碼錯誤');
@@ -627,6 +628,7 @@
             const [articles, setArticles] = useState([]);
             const [records, setRecords] = useState([]);
             const [assignments, setAssignments] = useState([]);
+            const [recordsLoaded, setRecordsLoaded] = useState(false);
             const [selectedArticle, setSelectedArticle] = useState(null);
             const [selectedRecord, setSelectedRecord] = useState(null);
             const [detailQuestions, setDetailQuestions] = useState(null);
@@ -646,10 +648,14 @@
                 const unsubscribeRecords = window.fb.onValue(recordsRef, (snapshot) => {
                     const data = snapshot.val();
                     if (data) {
+                        const studentIdNorm = String(user?.id || user?.studentId || '').trim().toLowerCase();
                         const list = Object.entries(data)
                             .map(([id, val]) => ({ id, ...val }))
-                            .filter(r => r.studentId === user.id)
-                            .sort((a, b) => b.timestamp - a.timestamp);
+                            .filter(r => {
+                                const rSid = String(r.studentId || '').trim().toLowerCase();
+                                return rSid && studentIdNorm && rSid === studentIdNorm;
+                            })
+                            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
                         setRecords(list);
 
                         // If viewing detail, update selectedRecord
@@ -658,7 +664,10 @@
                             const updated = list.find(r => r.id === prev.id);
                             return updated || prev;
                         });
+                    } else {
+                        setRecords([]);
                     }
+                    setRecordsLoaded(true);
                 });
 
                 const assignmentsRef = window.fb.ref(window.fb.db, 'assignments');
@@ -667,7 +676,8 @@
                     if (data) {
                         const list = Object.entries(data)
                             .map(([id, val]) => ({ id, ...val }))
-                            .filter(as => as.classId === user.classId && as.active);
+                            .filter(as => as.classId === user.classId && as.active)
+                            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
                         setAssignments(list);
                     } else {
                         setAssignments([]);
@@ -679,20 +689,26 @@
                     unsubscribeRecords();
                     unsubscribeAssignments();
                 };
-            }, [user.id, user.classId]);
+            }, [user.id, user.studentId, user.classId]);
 
             const assignedArticles = articles
-                .filter(a => assignments.some(as => as.articleId === a.id))
+                .filter(a => assignments.some(as => String(as.articleId) === String(a.id)))
+                .map(a => {
+                    const matchingAssignments = assignments
+                        .filter(as => String(as.articleId) === String(a.id))
+                        .sort((x, y) => (y.createdAt || 0) - (x.createdAt || 0));
+                    const assignment = matchingAssignments[0];
+                    const isSingle = matchingAssignments.some(as => as.attemptType === 'single') || assignment?.attemptType === 'single';
+                    return { ...a, assignment: { ...assignment, attemptType: isSingle ? 'single' : 'multiple' } };
+                })
                 .sort((a, b) => {
-                    const assignmentA = assignments.find(as => as.articleId === a.id);
-                    const assignmentB = assignments.find(as => as.articleId === b.id);
-                    const isExpiredA = assignmentA ? Date.now() > assignmentA.deadline : false;
-                    const isExpiredB = assignmentB ? Date.now() > assignmentB.deadline : false;
+                    const isExpiredA = a.assignment ? Date.now() > a.assignment.deadline : false;
+                    const isExpiredB = b.assignment ? Date.now() > b.assignment.deadline : false;
                     
                     if (isExpiredA && !isExpiredB) return 1;
                     if (!isExpiredA && isExpiredB) return -1;
                     
-                    return (assignmentB?.createdAt || 0) - (assignmentA?.createdAt || 0);
+                    return (b.assignment?.createdAt || 0) - (a.assignment?.createdAt || 0);
                 });
 
             const handleViewDetail = async (r) => {
@@ -815,11 +831,11 @@
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                                     {assignedArticles.map((a) => {
-                                        const assignment = a.assignment || assignments.find(as => as.articleId === a.id);
+                                        const assignment = a.assignment;
                                         const isExpired = assignment ? Date.now() > assignment.deadline : false;
-                                        const hasCompleted = records.some(r => r.articleId === a.id);
+                                        const hasCompleted = records.some(r => String(r.articleId) === String(a.id));
                                         const isSingle = assignment?.attemptType === 'single';
-                                        const isDisabled = isExpired || (isSingle && hasCompleted);
+                                        const isDisabled = !recordsLoaded || isExpired || (isSingle && hasCompleted);
                                         const textType = a.textType ? TEXT_TYPE_LABELS[a.textType] : TEXT_TYPE_LABELS.literary;
                                         const gradeLabel = a.gradeLevel ? (GRADE_LEVEL_LABELS[a.gradeLevel] || '高年級') : null;
 
@@ -876,11 +892,16 @@
                                                 <button 
                                                     disabled={isDisabled}
                                                     onClick={() => {
-                                                        if (isDisabled) return;
-                                                        const latestAssignment = assignment || assignments.find(as => as.articleId === a.id);
-                                                        const completedNow = records.some(r => r.articleId === a.id);
-                                                        if (latestAssignment?.attemptType === 'single' && completedNow) {
-                                                            alert('此為單次測驗，您已完成過無法再次作答');
+                                                        if (!recordsLoaded) {
+                                                            alert('系統正在載入您的測驗紀錄，請稍候再試...');
+                                                            return;
+                                                        }
+                                                        if (isExpired) {
+                                                            alert('此測驗已過截止日期');
+                                                            return;
+                                                        }
+                                                        if (isSingle && hasCompleted) {
+                                                            alert('此測驗設定為「單次測驗」，您已經作答繳交過，無法再次作答！');
                                                             return;
                                                         }
                                                         setSelectedArticle(a);
@@ -888,7 +909,7 @@
                                                     }}
                                                     className={`w-full py-4 rounded-2xl font-bold shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer ${isDisabled ? "bg-gray-100 text-gray-400 cursor-not-allowed shadow-none" : "bg-[#5A5A40] text-white hover:bg-[#4A4A30] shadow-[#5A5A40]/20"}`}
                                                 >
-                                                    {isExpired ? '測驗已結束' : (isSingle && hasCompleted ? '已完成（單次測驗已繳交）' : '開始閱讀與測驗')}
+                                                    {!recordsLoaded ? '讀取測驗狀態中...' : (isExpired ? '測驗已結束' : (isSingle && hasCompleted ? '已完成（單次測驗已繳交）' : '開始閱讀與測驗'))}
                                                     {!isDisabled && <Icon name="chevron-right" size={20} />}
                                                 </button>
                                             </div>
@@ -992,6 +1013,8 @@
                             <QuizInterface 
                                 article={selectedArticle} 
                                 user={user} 
+                                assignment={selectedArticle?.assignment || assignments.find(as => as.articleId === selectedArticle?.id)}
+                                records={records}
                                 onBack={() => setView('list')} 
                             />
                         )}
@@ -1202,8 +1225,41 @@
                                                                     <p className="font-bold text-base text-gray-800">{q.content}</p>
                                                                     <div className="bg-white p-5 rounded-2xl border border-gray-200 text-gray-700 leading-relaxed">
                                                                         <div className="text-xs font-bold text-gray-400 mb-1 uppercase tracking-wider">學生作答：</div>
-                                                                        {studentAns || <span className="text-gray-400 italic">（未填寫回答）</span>}
+                                                                        {studentAns || <span className="text-gray-400 italic">（留白未作答）</span>}
                                                                     </div>
+                                                                    {selectedRecord.graded && (
+                                                                        <div className="mt-3 p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl space-y-1.5">
+                                                                            <div className="flex items-center justify-between text-xs">
+                                                                                <span className="font-bold text-amber-900 flex items-center gap-1.5">
+                                                                                    <Icon name="award" size={15} className="text-amber-600" />
+                                                                                    本題得分：
+                                                                                    <span className="font-mono font-bold text-amber-700 text-sm">
+                                                                                        {(() => {
+                                                                                            const d = Array.isArray(selectedRecord.saDetails)
+                                                                                                ? selectedRecord.saDetails.find(item => Number(item.index) === idx) || selectedRecord.saDetails[idx]
+                                                                                                : selectedRecord.saDetails?.[idx];
+                                                                                            return typeof d?.earnedPoints === 'number' ? d.earnedPoints : (studentAns ? 1 : 0);
+                                                                                        })()} / 3 分
+                                                                                    </span>
+                                                                                </span>
+                                                                                {selectedRecord.manualGraded && (
+                                                                                    <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                                                        <Icon name="check-circle" size={11} /> 老師人工核定
+                                                                                    </span>
+                                                                                )}
+                                                                            </div>
+                                                                            {(() => {
+                                                                                const d = Array.isArray(selectedRecord.saDetails)
+                                                                                    ? selectedRecord.saDetails.find(item => Number(item.index) === idx) || selectedRecord.saDetails[idx]
+                                                                                    : selectedRecord.saDetails?.[idx];
+                                                                                return d?.feedback ? (
+                                                                                    <p className="text-xs text-amber-900/90 leading-relaxed mt-1">
+                                                                                        <span className="font-bold">評語說明：</span>{d.feedback}
+                                                                                    </p>
+                                                                                ) : null;
+                                                                            })()}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             );
                                                         })}
@@ -1244,7 +1300,7 @@
         };
 
         // --- Component: Quiz Interface (Reading -> Quiz -> Submission/Results) ---
-        const QuizInterface = ({ article, user, onBack }) => {
+        const QuizInterface = ({ article, user, assignment, records, onBack }) => {
             const [step, setStep] = useState('reading'); // reading, quiz, results
             const [questions, setQuestions] = useState(null);
             const [answersTF, setAnswersTF] = useState({});
@@ -1258,6 +1314,9 @@
             const [submissionStats, setSubmissionStats] = useState({ correctCount: 0, totalObjective: 0, objScore: 0 });
             const [showArticleModal, setShowArticleModal] = useState(false);
             const [articleFontSize, setArticleFontSize] = useState('text-base');
+
+            const isSingle = assignment?.attemptType === 'single' || article?.assignment?.attemptType === 'single';
+            const hasCompleted = records && records.some(r => String(r.articleId) === String(article?.id));
 
             useEffect(() => {
                 if (step === 'quiz') {
@@ -1348,6 +1407,26 @@
             const handleSubmit = async () => {
                 setIsSubmitting(true);
                 try {
+                    const studentIdNorm = String(user.id || user.studentId || '').trim();
+
+                    // Double safety check against concurrent duplicate submissions
+                    if (isSingle) {
+                        const recordsSnap = await window.fb.get(window.fb.ref(window.fb.db, 'records'));
+                        if (recordsSnap.exists()) {
+                            const allRecs = Object.values(recordsSnap.val());
+                            const alreadyDone = allRecs.some(r => 
+                                String(r.articleId) === String(article.id) && 
+                                String(r.studentId || '').trim().toLowerCase() === studentIdNorm.toLowerCase()
+                            );
+                            if (alreadyDone) {
+                                alert('此為單次測驗，系統紀錄顯示您已提交過，無法重複提交！');
+                                setIsSubmitting(false);
+                                onBack();
+                                return;
+                            }
+                        }
+                    }
+
                     const duration = startTime ? Math.round((Date.now() - startTime) / 1000) : 0;
                     
                     // Simple objective score calculation
@@ -1378,7 +1457,7 @@
                     const recordRef = window.fb.push(window.fb.ref(window.fb.db, 'records'));
                     const recData = {
                         timestamp: Date.now(),
-                        studentId: user.id,
+                        studentId: studentIdNorm,
                         articleId: article.id,
                         answersTF,
                         answersMC,
@@ -1403,6 +1482,28 @@
                     setIsSubmitting(false);
                 }
             };
+
+            if (isSingle && hasCompleted && step !== 'results') {
+                return (
+                    <div className="max-w-xl mx-auto p-12 bg-white rounded-[3rem] text-center shadow-xl border border-black/5 space-y-6 mt-12">
+                        <div className="w-20 h-20 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center mx-auto">
+                            <Icon name="shield-check" size={40} />
+                        </div>
+                        <h3 className="text-2xl font-bold serif text-gray-800">此測驗設定為「單次測驗」</h3>
+                        <p className="text-gray-600 leading-relaxed">
+                            您已經完成並繳交過《{article?.title}》的測驗內容，依據老師指派規定，單次測驗無法重複進入或重複作答。
+                        </p>
+                        <div className="flex gap-3 justify-center pt-4">
+                            <button 
+                                onClick={onBack}
+                                className="px-6 py-3.5 bg-[#5A5A40] text-white rounded-2xl font-bold hover:bg-[#4A4A30] transition-colors cursor-pointer"
+                            >
+                                返回測驗列表
+                            </button>
+                        </div>
+                    </div>
+                );
+            }
 
             if (!questions) {
                 return (
@@ -1650,7 +1751,7 @@
                         {/* Article Modal Popup */}
                         {showArticleModal && (
                             <div 
-                                className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 bg-black/60 backdrop-blur-xs"
+                                className="fixed inset-0 z-50 flex items-center justify-center p-4 md:p-6 bg-black/60 backdrop-blur-sm"
                                 onClick={() => setShowArticleModal(false)}
                             >
                                 <div 
